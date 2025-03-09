@@ -1,0 +1,99 @@
+# SPDX-FileCopyrightText: 2024 Anthony Loiseau <anthony.loiseau@allcircuits.com>
+#
+# SPDX-License-Identifier: MIT
+
+# This file is a markdownlint default configuration override for the project.
+#
+# See https://github.com/DavidAnson/markdownlint/blob/main/schema/.markdownlint.yaml
+# for overall configuration options
+
+# MD003/heading-style
+# Heading style
+# https://github.com/DavidAnson/markdownlint/blob/v0.32.1/doc/md003.md
+# - we don't like setext style which only supports H1 and H2
+# - we better like ATX or ATX-closed style and we actually only use ATX
+MD003:
+  style: "atx"
+
+# MD004/ul-style
+# Unordered list style
+# https://github.com/DavidAnson/markdownlint/blob/v0.32.1/doc/md004.md
+# - all bullets must be dashes (no asterisk, plus, etc)
+MD004:
+  style: "dash"
+
+# MD013/line-length
+# Line length
+# https://github.com/DavidAnson/markdownlint/blob/v0.32.1/doc/md013.md
+# - up to 100 chars par line
+# - tables can be longer
+# - long single-word links can be longer
+# - last word can not straddle boundary
+MD013:
+  line_length: 100
+  tables: false
+  strict: false
+  stern: false
+
+# MD024/no-duplicate-heading
+# Multiple headings with the same content
+# https://github.com/DavidAnson/markdownlint/blob/v0.32.1/doc/md024.md
+# - allow same titles in distinct chapters
+MD024:
+  siblings_only: true
+
+# MD033/no-inline-html
+# Inline HTML
+# https://github.com/DavidAnson/markdownlint/blob/v0.32.1/doc/md033.md
+# - we use "<details>" to fold contents into changelogs
+# - we use "<u>" to enforce a few underlines into changelogs
+# - we may use HTML tables for complex tables, with styling tags inside
+MD033:
+  allowed_elements:
+    [
+      "details",
+      "u",
+      "table",
+      "thead",
+      "tbody",
+      "th",
+      "tr",
+      "td",
+      "code",
+      "strong",
+      "em",
+      "ul",
+      "li",
+      "br",
+    ]
+
+# MD034/no-bare-urls
+# Bare URL used
+# https://github.com/DavidAnson/markdownlint/blob/v0.34.0/doc/md034.md
+# - markdown parser we use are compatible with bare URLs, braces not required
+MD034: false
+
+# MD035/hr-style
+# Horizontal rule style
+# https://github.com/DavidAnson/markdownlint/blob/v0.32.1/doc/md035.md
+# - only three-dashes form is allowed
+MD035:
+  style: "---"
+
+# MD036/no-emphasis-as-heading
+# Emphasis used instead of a heading
+# https://github.com/DavidAnson/markdownlint/blob/v0.34.0/doc/md036.md
+# - Disabled due to a few false-positives in our use
+MD036: false
+
+# MD038/no-space-in-code
+# Spaces inside code span elements
+# https://github.com/DavidAnson/markdownlint/blob/v0.34.0/doc/md038.md
+# - we may also use backtick for emphasized monospace text, including ` ` space
+MD038: false
+
+# MD045/no-alt-text
+# Images should have alternate text (alt text)
+# https://github.com/DavidAnson/markdownlint/blob/v0.32.1/doc/md045.md
+# - Disable image alternate text enforcement
+MD045: false
