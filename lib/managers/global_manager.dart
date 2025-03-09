@@ -2,8 +2,6 @@
 //
 // SPDX-License-Identifier: MIT
 
-import 'dart:io';
-
 import 'package:esaip_lessons_server/managers/abstract_manager.dart';
 import 'package:esaip_lessons_server/managers/http_logging_manager.dart';
 import 'package:esaip_lessons_server/managers/http_server_manager.dart';
@@ -22,6 +20,7 @@ class GlobalManager extends AbstractManager {
   /// Instance of the http logging manager
   final HttpLoggingManager httpLoggingManager;
 
+  /// Instance of the http server manager
   final HttpServerManager httpServerManager;
 
   /// Instance getter

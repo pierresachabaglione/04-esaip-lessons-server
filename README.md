@@ -14,3 +14,9 @@ SPDX-License-Identifier: MIT
 ## Presentation
 
 This is the base of the server app for ESAIP lessons
+
+The app has been tested on Windows (but not on linux and macOS).
+
+It creates a Http web server and displays the log to the main page.
+
+To add new request go to the `http_server_manager.dart` class.
