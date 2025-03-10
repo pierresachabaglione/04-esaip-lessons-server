@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2025 Benoit Rolandeau <benoit.rolandeau@allcircuits.com>
+#
+# SPDX-License-Identifier: MIT
+
+version = 1
+
+[[annotations]]
+path = ["macos/**", "windows/**", "linux/**"]
+SPDX-FileCopyrightText = "2025 Benoit Rolandeau <benoit.rolandeau@allcircuits.com>"
+SPDX-License-Identifier = "MIT"

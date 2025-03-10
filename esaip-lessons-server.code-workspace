@@ -1,0 +1,30 @@
+// SPDX-FileCopyrightText: 2025 Benoit Rolandeau <benoit.rolandeau@allcircuits.com>
+//
+// SPDX-License-Identifier: MIT
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "settings": {
+        "editor.overviewRulerBorder": true,
+        "editor.rulers": [
+            100
+        ],
+        "dart.lineLength": 100,
+    },
+    "extensions": {
+        "recommendations": [
+            "dart-code.dart-code",
+            "dart-code.flutter",
+            "localizely.flutter-intl",
+            "yzhang.markdown-all-in-one",
+            "bierner.markdown-mermaid",
+            "davidanson.vscode-markdownlint",
+            "42crunch.vscode-openapi",
+            "gruntfuggly.todo-tree",
+            "redhat.vscode-yaml"
+        ]
+    }
+}
