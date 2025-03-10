@@ -19,8 +19,17 @@ import 'package:uuid/uuid.dart';
 /// This class is used to manage the http server
 /// It will create a server and listen to the requests
 class HttpServerManager extends AbstractManager {
-  /// Instance of the http server
-  late final HttpServer _server;
+  static const _api = "api";
+
+  static const _version1 = "v1";
+
+  static const _helloRoute = "hello";
+
+  /// Instance of the http mobile app server
+  late final HttpServer _mobileAppServer;
+
+  /// Instance of the http things server
+  late final HttpServer _thingsServer;
 
   /// Instance of the http logging manager
   late final HttpLoggingManager _httpLoggingManager;
@@ -29,24 +38,56 @@ class HttpServerManager extends AbstractManager {
   @override
   Future<void> initialize() async {
     _httpLoggingManager = GlobalManager.instance.httpLoggingManager;
-    final app = Router();
 
-    app.get('/hello', _getHello);
+    final result = await Future.wait([
+      _initServer(
+        serverPort: server_constants.mobileAppServerPort,
+        serverName: "Mobile App",
+        initRoute: _initMobileAppRouter,
+      ),
+      _initServer(
+        serverPort: server_constants.thingsServerPort,
+        serverName: "Things App",
+        initRoute: _initThingsAppRouter,
+      ),
+    ]);
 
-    _server = await io.serve(
-      app.call,
-      server_constants.serverHostname,
-      server_constants.serverPort,
-    );
+    _mobileAppServer = result[0];
+    _thingsServer = result[1];
+  }
+
+  /// Initialize the mobile app router
+  Future<void> _initMobileAppRouter(Router app) async {
+    app.get(formatVersion1Route(_helloRoute), _getHello);
+  }
+
+  /// Initialize the things app router
+  Future<void> _initThingsAppRouter(Router app) async {
+    app.get(formatVersion1Route(_helloRoute), _getHello);
+  }
+
+  /// Initialize the server
+  Future<HttpServer> _initServer({
+    required int serverPort,
+    required String serverName,
+    required Future<void> Function(Router app) initRoute,
+  }) async {
+    final appRouter = Router();
+
+    await initRoute(appRouter);
+
+    final server = await io.serve(appRouter.call, server_constants.serverHostname, serverPort);
     _httpLoggingManager.addLog(
       HttpLog.now(
         requestId: "server-start",
         route: '/',
         method: '/',
         logLevel: Level.info,
-        message: 'Server started on ${_server.address.host}:${_server.port}',
+        message: 'Server: $serverName started on ${server.address.host}:${server.port}',
       ),
     );
+
+    return server;
   }
 
   /// Route to handle the hello request
@@ -63,7 +104,7 @@ class HttpServerManager extends AbstractManager {
     _httpLoggingManager.addLog(
       HttpLog.now(
         requestId: requestId,
-        route: request.requestedUri.path,
+        route: request.requestedUri.toString(),
         method: request.method,
         logLevel: Level.info,
         message: "Received request",
@@ -73,7 +114,7 @@ class HttpServerManager extends AbstractManager {
     _httpLoggingManager.addLog(
       HttpLog.now(
         requestId: requestId,
-        route: request.requestedUri.path,
+        route: request.requestedUri.toString(),
         method: request.method,
         logLevel: Level.info,
         message: "Responded with status code ${response.statusCode}",
@@ -82,18 +123,26 @@ class HttpServerManager extends AbstractManager {
     return response;
   }
 
-  /// {@macro abstract_manager.dispose}
-  @override
-  Future<void> dispose() async {
+  /// Close the given [server]
+  Future<void> _closeServer(HttpServer server) async {
     _httpLoggingManager.addLog(
       HttpLog.now(
         requestId: "server-close",
         route: '/',
         method: '/',
         logLevel: Level.info,
-        message: 'Server closed on ${_server.address.host}:${_server.port}',
+        message: 'Server closed on ${server.address.host}:${server.port}',
       ),
     );
-    await _server.close(force: true);
+    await server.close(force: true);
+  }
+
+  /// Format the route for the server
+  static String formatVersion1Route(String route) => '/$_api/$_version1/$route';
+
+  /// {@macro abstract_manager.dispose}
+  @override
+  Future<void> dispose() async {
+    await Future.wait([_closeServer(_mobileAppServer), _closeServer(_thingsServer)]);
   }
 }
