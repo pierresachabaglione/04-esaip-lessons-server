@@ -8,7 +8,7 @@ import 'package:esaip_lessons_server/managers/http_logging_manager.dart';
 import 'package:esaip_lessons_server/managers/http_server_manager.dart';
 import 'package:esaip_lessons_server/managers/logger_manager.dart';
 import 'package:esaip_lessons_server/database/database_functions.dart';
-import 'package:esaip_lessons_server/models/http_log.dart';
+//import 'package:esaip_lessons_server/models/http_log.dart';
 /// The global manager manages:
 /// - the global state of the application
 /// - the initialization of the other managers
