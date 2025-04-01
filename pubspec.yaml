@@ -32,6 +32,10 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+  #Added required dependency to store data in SQLite
+
+  sqflite: ^2.0.0+4
+  path: ^1.8.0
   flutter:
     sdk: flutter
 
@@ -54,6 +58,8 @@ dependencies:
   uuid: ^4.5.1
 
 dev_dependencies:
+  test: ^1.16.0
+  sqflite_common_ffi: ^2.3.5
   flutter_test:
     sdk: flutter
 

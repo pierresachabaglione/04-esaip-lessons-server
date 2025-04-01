@@ -6,7 +6,7 @@ import 'package:esaip_lessons_server/managers/abstract_manager.dart';
 import 'package:esaip_lessons_server/managers/http_logging_manager.dart';
 import 'package:esaip_lessons_server/managers/http_server_manager.dart';
 import 'package:esaip_lessons_server/managers/logger_manager.dart';
-
+import 'package:esaip_lessons_server/database/database_functions.dart';
 /// The global manager manages:
 /// - the global state of the application
 /// - the initialization of the other managers
@@ -23,9 +23,13 @@ class GlobalManager extends AbstractManager {
   /// Instance of the http server manager
   final HttpServerManager httpServerManager;
 
+  /// instance of the database function manager
+  final DatabaseFunctions databaseFunctions;
+
   /// Instance getter
   ///
   /// Create a new instance if it does not exist
+
   static GlobalManager get instance {
     _instance ??= GlobalManager();
     return _instance!;
@@ -35,7 +39,7 @@ class GlobalManager extends AbstractManager {
   GlobalManager()
     : loggerManager = LoggerManager(),
       httpLoggingManager = HttpLoggingManager(),
-      httpServerManager = HttpServerManager();
+      httpServerManager = HttpServerManager(),databaseFunctions = DatabaseFunctions();
 
   /// Initialize the global manager
   ///
@@ -50,6 +54,7 @@ class GlobalManager extends AbstractManager {
     await httpLoggingManager.initialize();
 
     await httpServerManager.initialize();
+    await databaseFunctions.database;
   }
 
   /// Dispose the global manager and the linked managers
