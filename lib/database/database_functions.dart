@@ -49,7 +49,7 @@ class DatabaseFunctions {
       {
         'key': key,
         'value': value,
-        'timestamp': DateTime.now().toIso8601String(),
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
         'type': type,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
