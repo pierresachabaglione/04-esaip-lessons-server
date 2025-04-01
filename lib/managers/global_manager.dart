@@ -3,11 +3,12 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+
+import 'package:esaip_lessons_server/database/database_functions.dart';
 import 'package:esaip_lessons_server/managers/abstract_manager.dart';
 import 'package:esaip_lessons_server/managers/http_logging_manager.dart';
 import 'package:esaip_lessons_server/managers/http_server_manager.dart';
 import 'package:esaip_lessons_server/managers/logger_manager.dart';
-import 'package:esaip_lessons_server/database/database_functions.dart';
 //import 'package:esaip_lessons_server/models/http_log.dart';
 /// The global manager manages:
 /// - the global state of the application
@@ -75,8 +76,9 @@ class GlobalManager extends AbstractManager {
   ]);
 
   /// Get all attributes from the database
-  Future<List<Map<String, dynamic>>> getAttributes() async => await databaseFunctions.getAttributes();
+  Future<List<Map<String, dynamic>>> getAttributes() async => databaseFunctions.getAttributes();
 
+  /// Store a new set of values into the database
   Future<void> storeAttribute(String key, String value, String type) async {
     await databaseFunctions.insertAttribute(key, value, type);
     notifyDatabaseChange();

@@ -39,8 +39,8 @@ class _HomePageState extends State<HomePage> {
         _logs.add(log);
       });
     });
-    _databaseChangeSubscription = GlobalManager.instance.databaseChangeStream.listen((_) {
-      _refreshData();
+    _databaseChangeSubscription = GlobalManager.instance.databaseChangeStream.listen((_) async {
+      await _refreshData();
     });
   }
 
@@ -73,7 +73,7 @@ class _HomePageState extends State<HomePage> {
               //the title of the card is the timestamp of the log
               title: Text(log.timestamp.toString()),
 
-              leading: Icon(Icons.http, color: Colors.blue),
+              leading: const Icon(Icons.http, color: Colors.blue),
             ),
           ),
           for (final log in _logsCapteurs)Card(
@@ -82,7 +82,7 @@ class _HomePageState extends State<HomePage> {
               title: Text(log['timestamp'].toString()),
 
               subtitle: Text('Component ID: ${log['key']}, Type: ${log['type']}'),
-              leading: Icon(Icons.sensors, color: Colors.green),
+              leading: const Icon(Icons.sensors, color: Colors.green),
             ),
           ),
         ],
