@@ -2,11 +2,14 @@
 //
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
+
+import 'package:esaip_lessons_server/database/database_functions.dart';
 import 'package:esaip_lessons_server/managers/abstract_manager.dart';
 import 'package:esaip_lessons_server/managers/http_logging_manager.dart';
 import 'package:esaip_lessons_server/managers/http_server_manager.dart';
 import 'package:esaip_lessons_server/managers/logger_manager.dart';
-
+//import 'package:esaip_lessons_server/models/http_log.dart';
 /// The global manager manages:
 /// - the global state of the application
 /// - the initialization of the other managers
@@ -23,9 +26,20 @@ class GlobalManager extends AbstractManager {
   /// Instance of the http server manager
   final HttpServerManager httpServerManager;
 
+  /// instance of the database function manager
+  final DatabaseFunctions databaseFunctions;
+ /// Stream controller for the database changes
+  final StreamController<void> _databaseChangeController = StreamController<void>.broadcast();
+  /// Stream of database changes
+  Stream<void> get databaseChangeStream => _databaseChangeController.stream;
+ /// Notify the database change to all functions
+  void notifyDatabaseChange() {
+    _databaseChangeController.add(null);
+  }
   /// Instance getter
   ///
   /// Create a new instance if it does not exist
+
   static GlobalManager get instance {
     _instance ??= GlobalManager();
     return _instance!;
@@ -35,7 +49,7 @@ class GlobalManager extends AbstractManager {
   GlobalManager()
     : loggerManager = LoggerManager(),
       httpLoggingManager = HttpLoggingManager(),
-      httpServerManager = HttpServerManager();
+      httpServerManager = HttpServerManager(),databaseFunctions = DatabaseFunctions();
 
   /// Initialize the global manager
   ///
@@ -50,6 +64,7 @@ class GlobalManager extends AbstractManager {
     await httpLoggingManager.initialize();
 
     await httpServerManager.initialize();
+    await databaseFunctions.database;
   }
 
   /// Dispose the global manager and the linked managers
@@ -59,4 +74,13 @@ class GlobalManager extends AbstractManager {
     httpLoggingManager.dispose(),
     httpServerManager.dispose(),
   ]);
+
+  /// Get all attributes from the database
+  Future<List<Map<String, dynamic>>> getAttributes() async => databaseFunctions.getAttributes();
+
+  /// Store a new set of values into the database
+  Future<void> storeAttribute(String key, String value, String type) async {
+    await databaseFunctions.insertAttribute(key, value, type);
+    notifyDatabaseChange();
+  }
 }
