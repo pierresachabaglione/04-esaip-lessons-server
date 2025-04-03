@@ -42,7 +42,7 @@ void main() {
     channel.sink.add(testMessage);
 
     // Wait for processing
-    await Future.delayed(Duration(milliseconds: 500));
+    await Future.delayed(const Duration(milliseconds: 500));
 
     // Check if the device was registered in the `devices` table
     final devices = await database.database.then((db) {

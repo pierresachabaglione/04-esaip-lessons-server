@@ -8,18 +8,22 @@ import 'package:shelf_router/shelf_router.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+/// WebSocket server to handle incoming connections and messages
 class WebSocketServer {
   late HttpServer _server;
-  List<WebSocket> _clients = [];
+  final List<WebSocket> _clients = [];
   final List<WebSocketChannel> _connections = [];
   final Router _router = Router();
 
+  /// Constructor to initialize the WebSocket server
   WebSocketServer() {
     _router.get('/ws', _handleWebSocket);
   }
 
+    ///Handling the http requests
   Handler get handler => _router.call;
 
+  /// Start the WebSocket server
   Future<void> start() async {
     _server = await HttpServer.bind('localhost', 8080, shared: true);
     print('WebSocket server started on ws://${_server.address.address}:${_server.port}');
@@ -73,25 +77,29 @@ class WebSocketServer {
     }));
   }
 
+  /// Close the WebSocket server and all its connections
   Future<void> close() async {
     // Create a copy of the list to avoid concurrent modification
     final clientsCopy = List<WebSocket>.from(_clients);
-    for (var client in clientsCopy) {
+    for (final client in clientsCopy) {
       await client.close();
     }
     _clients.clear();
   }
 
+  /// Send a message to all connected clients
   void sendMessage(String message) {
     for (final channel in _connections) {
       channel.sink.add(message);
     }
   }
 
+  /// Send a message to a specific client
   void sendMessageToClient(WebSocketChannel channel, String message) {
     channel.sink.add(message);
   }
 
+  /// Send a message to all clients except the server
   void sendMessageToAllExceptSender(WebSocketChannel sender, String message) {
     for (final channel in _connections) {
       if (channel != sender) {
