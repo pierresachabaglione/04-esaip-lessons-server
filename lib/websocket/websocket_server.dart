@@ -97,6 +97,7 @@ class WebSocketServer {
   /// Send a message to a specific client
   void sendMessageToClient(WebSocketChannel channel, String message) {
     channel.sink.add(message);
+
   }
 
   /// Send a message to all clients except the server
