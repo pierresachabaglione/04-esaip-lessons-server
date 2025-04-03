@@ -99,7 +99,7 @@ class DatabaseFunctions {
   /// Retrieves a device from the `devices` table by uniqueId
   Future<List<Map<String, dynamic>>> getDevice(String uniqueId) async {
     final db = await database;
-    return await db.query('devices', where: 'uniqueId = ?', whereArgs: [uniqueId]);
+    return db.query('devices', where: 'uniqueId = ?', whereArgs: [uniqueId]);
   }
 
   /// Inserts sensor data into the `sensor_data` table
@@ -119,7 +119,7 @@ class DatabaseFunctions {
   /// Retrieves all sensor data associated with a device
   Future<List<Map<String, dynamic>>> getSensorData(String uniqueId) async {
     final db = await database;
-    return await db.query('sensor_data', where: 'uniqueId = ?', whereArgs: [uniqueId]);
+    return db.query('sensor_data', where: 'uniqueId = ?', whereArgs: [uniqueId]);
   }
 
   /// This function will insert an attribute into the database using a key
