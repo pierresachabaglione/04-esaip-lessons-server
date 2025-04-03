@@ -53,6 +53,17 @@ class DatabaseFunctions {
         timestamp TEXT NOT NULL
       );
     ''');
+
+    await db.execute('''
+       CREATE TABLE sensor_data (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         uniqueId TEXT,
+         key TEXT,
+         value TEXT,
+         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+         FOREIGN KEY (uniqueId) REFERENCES devices(uniqueId) ON DELETE CASCADE
+       )
+     ''');
   }
 
   /// This function will register a device using their uniqueId and type
@@ -63,6 +74,47 @@ class DatabaseFunctions {
       'type': type,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+
+
+  /// Checks if the decice is already registered in the database
+  /// Usage in the main manager to allow any communication with all the services
+  Future<bool> isDeviceRegistered(String uniqueId) async {
+    final db = await database;
+    final result = await db.query(
+      'devices',
+      where: 'uniqueId = ?',
+      whereArgs: [uniqueId],
+    );
+    return result.isNotEmpty;
+  }
+
+
+  /// Retrieves a device from the `devices` table by uniqueId
+  Future<List<Map<String, dynamic>>> getDevice(String uniqueId) async {
+    final db = await database;
+    return await db.query('devices', where: 'uniqueId = ?', whereArgs: [uniqueId]);
+  }
+
+  /// Inserts sensor data into the `sensor_data` table
+  Future<void> insertSensorData(String uniqueId, String key, String value) async {
+    final db = await database;
+
+    try {
+      await db.insert(
+        'sensor_data',
+        {'uniqueId': uniqueId, 'key': key, 'value': value},
+      );
+    } catch (e) {
+      print('Error inserting sensor data: $e');
+    }
+  }
+
+  /// Retrieves all sensor data associated with a device
+  Future<List<Map<String, dynamic>>> getSensorData(String uniqueId) async {
+    final db = await database;
+    return await db.query('sensor_data', where: 'uniqueId = ?', whereArgs: [uniqueId]);
   }
 
   /// This function will insert an attribute into the database using a key
