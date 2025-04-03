@@ -44,18 +44,27 @@ class WebSocketServer {
         return;
       }
 
-      final isRegistered = await DatabaseFunctions().isDeviceRegistered(uniqueId);
+      //bypassing the apicheck for trivial actions
+      if (action != 'register' && action != 'hello') {
+        final providedKey = data['apiKey'] as String?;
+        if (providedKey == null) {
+          channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing API key'}));
+          return;
+        }
 
-      // Enforce registration before other actions
-      if (action != 'register' && !isRegistered) {
-        channel.sink.add(jsonEncode({
-          'status': 'error',
-          'message': 'Device not registered. Please register first.'
-        }));
-        return;
+        // Retrieve the device record to check its serial and apikey
+        final deviceRecords = await DatabaseFunctions().getDevice(uniqueId);
+        if (deviceRecords.isEmpty || deviceRecords.first['apiKey'] != providedKey) {
+          channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid API key'}));
+          return;
+        }
       }
 
+      // Proceed with handling the request.
       switch (action) {
+        case 'hello':
+          channel.sink.add(jsonEncode({'status': 'success', 'message': 'Hello from server!'}));
+          break;
         case 'register':
           await _handleRegister(channel, data);
           break;
@@ -68,6 +77,7 @@ class WebSocketServer {
         case 'sendMessageToClient':
           await _handleSendMessageToClient(channel, data);
           break;
+      // You might also add a case for 'hello' if needed.
         default:
           channel.sink.add(jsonEncode({'status': 'error', 'message': 'Unknown action'}));
       }
@@ -85,27 +95,32 @@ class WebSocketServer {
       channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing registration fields'}));
       return;
     }
-    // Implemented the uniqueId format check (directly from our specification sheets)
-    // - "CC" is the fixed company code.
-    // - ZZ is either 'TS' for temperature sensor or 'YT' for your thing.
-    // - YYYYY is a five-digit unique number.
+
+    // Validate uniqueId format…
     final regExp = RegExp(r'^CC-(TS|YT)-\d{5}$');
     if (!regExp.hasMatch(uniqueId)) {
       channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid uniqueId format'}));
       return;
     }
 
-    //we check if the device is alreadu registered if not we register it
+    // Check if device already exists.
     final existingDevice = await DatabaseFunctions().getDevice(uniqueId);
     if (existingDevice.isNotEmpty) {
       channel.sink.add(jsonEncode({'status': 'error', 'message': 'Device already registered'}));
       return;
     }
 
-    await DatabaseFunctions().registerDevice(uniqueId, type);
-    _clients[uniqueId] = channel; // Store the client with uniqueId
-    channel.sink.add(jsonEncode({'status': 'success', 'message': 'Device registered'}));
+    // Register the device and get the API key.
+    final apiKey = await DatabaseFunctions().registerDevice(uniqueId, type);
+    _clients[uniqueId] = channel; // Track the client connection
+    channel.sink.add(jsonEncode({
+      'status': 'success',
+      'message': 'Device registered',
+      'apiKey': apiKey
+    }));
   }
+
+
   ///the unregister handler
   Future<void> _handleUnregister(WebSocketChannel channel, Map<String, dynamic> data) async {
     final uniqueId = data['uniqueId'] as String?;

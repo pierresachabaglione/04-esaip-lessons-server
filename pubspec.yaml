@@ -58,6 +58,7 @@ dependencies:
   # patterns.
   shelf_router: ^1.1.4
 
+  #Used for generating API Keys and serial numbers
   uuid: ^4.5.1
 
 dev_dependencies:

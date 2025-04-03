@@ -4,6 +4,7 @@ library;
 
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
 
 /// The main handler function to interact with the database
 class DatabaseFunctions {
@@ -50,6 +51,7 @@ class DatabaseFunctions {
       CREATE TABLE devices (
         uniqueId TEXT PRIMARY KEY,
         type TEXT NOT NULL,
+        apiKey TEXT NOT NULL,
         timestamp TEXT NOT NULL
       );
     ''');
@@ -67,13 +69,17 @@ class DatabaseFunctions {
   }
 
   /// This function will register a device using their uniqueId and type
-  Future<void> registerDevice(String uniqueId, String type) async {
+  /// It then returns an unique API key that will be used to identify the device
+  Future<String> registerDevice(String uniqueId, String type) async {
     final db = await database;
+    final apiKey = const Uuid().v4(); // Generates a unique API key
     await db.insert('devices', {
       'uniqueId': uniqueId,
       'type': type,
+      'apiKey': apiKey,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+    return apiKey;
   }
 
 /// function to delete a device from the database ny removing all its logs and
