@@ -82,6 +82,16 @@ class WebSocketServer {
       channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing registration fields'}));
       return;
     }
+    // Implemented the uniqueId format check (directly from our specification sheets)
+    // - "CC" is the fixed company code.
+    // - ZZ is either 'TS' for temperature sensor or 'YT' for your thing.
+    // - YYYYY is a five-digit unique number.
+    final regExp = RegExp(r'^CC-(TS|YT)-\d{5}$');
+    if (!regExp.hasMatch(uniqueId)) {
+      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid uniqueId format'}));
+      return;
+    }
+
     //we check if the device is alreadu registered if not we register it
     final existingDevice = await DatabaseFunctions().getDevice(uniqueId);
     if (existingDevice.isNotEmpty) {

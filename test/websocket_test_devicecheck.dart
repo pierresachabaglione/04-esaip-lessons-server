@@ -32,13 +32,13 @@ void main() {
     await channel.close();
   });
 
-  /// Test: Device registration through WebSocket
-  test('WebSocket server handles device registration', () async {
+  /// Test: Device registration with a valid uniqueId (good device)
+  test('WebSocket server handles device registration with valid uniqueId', () async {
     final channel = IOWebSocketChannel.connect('ws://localhost:8080/ws');
 
     final testMessage = jsonEncode({
       'action': 'register',
-      'uniqueId': '1234',
+      'uniqueId': 'CC-TS-00001',
       'type': 'sensor',
     });
     channel.sink.add(testMessage);
@@ -52,10 +52,31 @@ void main() {
 
     // Verify the database entry
     final devices = await database.database.then((db) {
-      return db.query('devices', where: 'uniqueId = ?', whereArgs: ['1234']);
+      return db.query('devices', where: 'uniqueId = ?', whereArgs: ['CC-TS-00001']);
     });
-
     expect(devices.isNotEmpty, true);
+    await channel.sink.close();
+  });
+
+  /// Test: Device registration fails with an invalid uniqueId
+  test('WebSocket server rejects device registration with invalid uniqueId', () async {
+    final channel = IOWebSocketChannel.connect('ws://localhost:8080/ws');
+
+    final testMessage = jsonEncode({
+      'action': 'register',
+      // Invalid uniqueId
+      'uniqueId': 'nonvousnepasserezpas',
+      'type': 'sensor',
+    });
+    channel.sink.add(testMessage);
+
+    final response = await channel.stream.first;
+    final responseData = jsonDecode(response as String);
+
+    // Verify the response is an error due to invalid uniqueId format.
+    expect(responseData['status'], equals('error'));
+    expect(responseData['message'], contains('Invalid uniqueId format'));
+
     await channel.sink.close();
   });
 
@@ -66,25 +87,25 @@ void main() {
     // Convert the channel stream to a broadcast stream.
     final broadcastStream = channel.stream.asBroadcastStream();
 
-    // Register device
+    // Register device with a valid uniqueId.
     final registerMessage = jsonEncode({
       'action': 'register',
-      'uniqueId': '1234',
+      'uniqueId': 'CC-TS-00088',
       'type': 'sensor',
     });
     channel.sink.add(registerMessage);
 
-    // Wait for registration response
+    // Wait for registration response.
     final registerResponse = await broadcastStream.first;
     final registerData = jsonDecode(registerResponse as String);
     expect(registerData['status'], equals('success'));
 
-    // Send data
+    // Send data (include the required 'type' field).
     final sendDataMessage = jsonEncode({
       'action': 'sendData',
       'key': 'temperature',
       'value': '25.5',
-      'uniqueId': '1234',
+      'uniqueId': 'CC-TS-00088',
       'type': 'sensor',
     });
     channel.sink.add(sendDataMessage);
@@ -93,14 +114,14 @@ void main() {
     final response = await broadcastStream.first;
     final responseData = jsonDecode(response as String);
 
-    // Verify response
+    // Verify response.
     expect(responseData['status'], equals('success'));
     expect(responseData['message'], contains('Data stored'));
 
     await channel.sink.close();
   });
 
-  /// Test: Client-to-client messaging
+  /// Test: Client-to-client messaging works
   test('Client-to-client messaging works', () async {
     final sender = IOWebSocketChannel.connect('ws://localhost:8080/ws');
     final receiver = IOWebSocketChannel.connect('ws://localhost:8080/ws');
@@ -108,15 +129,15 @@ void main() {
     // Convert the receiver stream to a broadcast stream so it can be listened to multiple times.
     final receiverStream = receiver.stream.asBroadcastStream();
 
-    // Register both clients.
+    // Register both clients with valid uniqueIds.
     sender.sink.add(jsonEncode({
       'action': 'register',
-      'uniqueId': 'sender',
+      'uniqueId': 'CC-TS-00002',
       'type': 'sensor'
     }));
     receiver.sink.add(jsonEncode({
       'action': 'register',
-      'uniqueId': 'receiver',
+      'uniqueId': 'CC-TS-00003',
       'type': 'sensor'
     }));
 
@@ -126,8 +147,8 @@ void main() {
     // Sender sends a message to the receiver.
     final messageToSend = jsonEncode({
       'action': 'sendMessageToClient',
-      'uniqueId': 'sender',
-      'targetId': 'receiver',
+      'uniqueId': 'CC-TS-00002',
+      'targetId': 'CC-TS-00003',
       'message': 'Hello Receiver!',
     });
     sender.sink.add(messageToSend);
@@ -143,5 +164,4 @@ void main() {
     await sender.sink.close();
     await receiver.sink.close();
   });
-
 }
