@@ -59,6 +59,9 @@ class WebSocketServer {
         case 'register':
           await _handleRegister(channel, data);
           break;
+        case 'unregister':
+          await _handleUnregister(channel, data);
+          break;
         case 'sendData':
           await _handleData(channel, data);
           break;
@@ -102,6 +105,22 @@ class WebSocketServer {
     await DatabaseFunctions().registerDevice(uniqueId, type);
     _clients[uniqueId] = channel; // Store the client with uniqueId
     channel.sink.add(jsonEncode({'status': 'success', 'message': 'Device registered'}));
+  }
+  ///the unregister handler
+  Future<void> _handleUnregister(WebSocketChannel channel, Map<String, dynamic> data) async {
+    final uniqueId = data['uniqueId'] as String?;
+    if (uniqueId == null) {
+      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing uniqueId'}));
+      return;
+    }
+    final isRegistered = await DatabaseFunctions().isDeviceRegistered(uniqueId);
+    if (!isRegistered) {
+      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Device not registered'}));
+      return;
+    }
+    await DatabaseFunctions().unregisterDevice(uniqueId);
+    _clients.remove(uniqueId); // Remove from the active clients list
+    channel.sink.add(jsonEncode({'status': 'success', 'message': 'Device unregistered'}));
   }
 
 
