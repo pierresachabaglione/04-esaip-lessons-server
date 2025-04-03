@@ -76,7 +76,12 @@ class DatabaseFunctions {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-
+/// function to delete a device from the database ny removing all its logs and
+  /// data
+  Future<void> unregisterDevice(String uniqueId) async {
+    final db = await database;
+    await db.delete('devices', where: 'uniqueId = ?', whereArgs: [uniqueId]);
+  }
 
   /// Checks if the decice is already registered in the database
   /// Usage in the main manager to allow any communication with all the services
