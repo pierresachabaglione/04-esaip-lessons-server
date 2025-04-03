@@ -39,5 +39,19 @@ void main() {
       expect(attributes, isNotEmpty);
       expect(attributes.first['timestamp'], isNotNull);
     });
+
+    test('devices table', () async {
+      // Insert a device
+      await dbFunctions.registerDevice('testUniqueId', 'testType');
+
+      // Retrieve devices
+       final devices = await dbFunctions.getDevices();
+
+      // Check if the inserted device is present
+      expect(devices, isNotEmpty);
+      expect(devices.first['uniqueId'], 'testUniqueId');
+      expect(devices.first['type'], 'testType');
+    });
+
   });
 }
