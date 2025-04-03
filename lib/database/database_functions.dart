@@ -4,6 +4,7 @@ library;
 
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
 
 /// The main handler function to interact with the database
 class DatabaseFunctions {
@@ -50,6 +51,7 @@ class DatabaseFunctions {
       CREATE TABLE devices (
         uniqueId TEXT PRIMARY KEY,
         type TEXT NOT NULL,
+        apiKey TEXT NOT NULL,
         timestamp TEXT NOT NULL
       );
     ''');
@@ -67,13 +69,17 @@ class DatabaseFunctions {
   }
 
   /// This function will register a device using their uniqueId and type
-  Future<void> registerDevice(String uniqueId, String type) async {
+  /// It then returns an unique API key that will be used to identify the device
+  Future<String> registerDevice(String uniqueId, String type) async {
     final db = await database;
+    final apiKey = const Uuid().v4(); // Generates a unique API key
     await db.insert('devices', {
       'uniqueId': uniqueId,
       'type': type,
+      'apiKey': apiKey,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+    return apiKey;
   }
 
 /// function to delete a device from the database ny removing all its logs and
@@ -99,7 +105,7 @@ class DatabaseFunctions {
   /// Retrieves a device from the `devices` table by uniqueId
   Future<List<Map<String, dynamic>>> getDevice(String uniqueId) async {
     final db = await database;
-    return await db.query('devices', where: 'uniqueId = ?', whereArgs: [uniqueId]);
+    return db.query('devices', where: 'uniqueId = ?', whereArgs: [uniqueId]);
   }
 
   /// Inserts sensor data into the `sensor_data` table
@@ -119,7 +125,7 @@ class DatabaseFunctions {
   /// Retrieves all sensor data associated with a device
   Future<List<Map<String, dynamic>>> getSensorData(String uniqueId) async {
     final db = await database;
-    return await db.query('sensor_data', where: 'uniqueId = ?', whereArgs: [uniqueId]);
+    return db.query('sensor_data', where: 'uniqueId = ?', whereArgs: [uniqueId]);
   }
 
   /// This function will insert an attribute into the database using a key
