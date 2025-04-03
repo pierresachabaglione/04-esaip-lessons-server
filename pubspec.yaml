@@ -33,9 +33,13 @@ environment:
 # versions available, run `flutter pub outdated`.
 dependencies:
   #Added required dependency to store data in SQLite
-
   sqflite: ^2.0.0+4
   path: ^1.8.0
+  #Added the required package for web_socket_channel:
+  web_socket_channel: ^2.1.0
+  #added required packeage for middleware using shelf
+  shelf: ^1.4.2
+  mockito: ^5.4.0
   flutter:
     sdk: flutter
 
@@ -48,8 +52,7 @@ dependencies:
   # Small, easy to use and extensible logger
   logger: ^2.5.0
 
-  # Help to create and compose web servers
-  shelf: ^1.4.2
+
 
   # This package offers a request router for Shelf, matching request to handlers using route
   # patterns.
