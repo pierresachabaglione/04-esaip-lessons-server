@@ -65,7 +65,6 @@ void main() {
 
     // Verify that the data was stored in the database.
     final storedData = await database.getStoredData(uniqueId);
-
     // Convert stored keys to a list for easy checking.
     final keys = storedData.map((entry) => entry['key']).toList();
     expect(keys, contains('temperature'));
