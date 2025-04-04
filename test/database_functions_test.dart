@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
-  // Initialize sqflite for ffi
+  // Initialize sqflite for ffi.
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
@@ -11,47 +11,38 @@ void main() {
     final dbFunctions = DatabaseFunctions();
 
     setUp(() async {
-      // Ensure the database is initialized before each test
       await dbFunctions.database;
     });
 
-    test('insertAttribute and getAttributes', () async {
-      // Insert an attribute
-      await dbFunctions.insertAttribute('testKey', 'testValue', 'testType');
+    test('insertStoredData and getStoredData', () async {
+      // Insert stored data for a dummy uniqueId.
+      await dbFunctions.insertStoredData('CC-TS-TEST', 'testKey', 'testValue');
 
-      // Retrieve attributes
-      final attributes = await dbFunctions.getAttributes();
+      // Retrieve stored data.
+      final storedData = await dbFunctions.getStoredData('CC-TS-TEST');
 
-      // Check if the inserted attribute is present
-      expect(attributes, isNotEmpty);
-      expect(attributes.first['key'], 'testKey');
-      expect(attributes.first['value'], 'testValue');
-      expect(attributes.first['type'], 'testType');
+      // Check if the inserted stored data is present.
+      expect(storedData, isNotEmpty);
+      expect(storedData.first['key'], 'testKey');
+      expect(storedData.first['value'], 'testValue');
     });
-    test('datetime test', () async {
-      // Insert an attribute
-      await dbFunctions.insertAttribute('testKey', 'testValue', 'testType');
 
-      // Retrieve attributes
-      final attributes = await dbFunctions.getAttributes();
+    test('timestamp test', () async {
+      await dbFunctions.insertStoredData('CC-TS-TEST', 'testKey', 'testValue');
+      final storedData = await dbFunctions.getStoredData('CC-TS-TEST');
 
-      // Check if the inserted attribute is present
-      expect(attributes, isNotEmpty);
-      expect(attributes.first['timestamp'], isNotNull);
+      // Check that the stored data includes a timestamp.
+      expect(storedData, isNotEmpty);
+      expect(storedData.first['timestamp'], isNotNull);
     });
 
     test('devices table', () async {
-      // Insert a device
       await dbFunctions.registerDevice('testUniqueId', 'testType');
+      final devices = await dbFunctions.getDevices();
 
-      // Retrieve devices
-       final devices = await dbFunctions.getDevices();
-
-      // Check if the inserted device is present
       expect(devices, isNotEmpty);
       expect(devices.first['uniqueId'], 'testUniqueId');
       expect(devices.first['type'], 'testType');
     });
-
   });
 }

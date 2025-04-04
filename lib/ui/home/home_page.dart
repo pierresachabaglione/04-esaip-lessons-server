@@ -1,90 +1,73 @@
 import 'dart:async';
-
 import 'package:esaip_lessons_server/managers/global_manager.dart';
-import 'package:esaip_lessons_server/models/http_log.dart';
 import 'package:flutter/material.dart';
 
-/// Home page of the app
+/// Home page of the app.
 class HomePage extends StatefulWidget {
-  /// Title of the home page
+  /// Constructor for the home page.
   const HomePage({super.key, required this.title});
-
-  /// Title of the home page
+  /// Title of the home page.
   final String title;
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
-/// State of the home page
 class _HomePageState extends State<HomePage> {
-  /// Subscription to the log stream
-  StreamSubscription? _logSubscription;
-
-  /// Subscription to the database change stream
+  // Subscription for database changes.
   StreamSubscription? _databaseChangeSubscription;
 
-  /// List of logs
-  final List<HttpLog> _logs;
-  final List<Map<String, dynamic>> _logsCapteurs;
-
-  /// Default constructor
-  _HomePageState() : _logs = [], _logsCapteurs = [];
+  // List to store telemetry data retrieved from the database.
+  final List<Map<String, dynamic>> _telemetryData = [];
 
   @override
   void initState() {
     super.initState();
-    _logSubscription = GlobalManager.instance.httpLoggingManager.logStream.listen((log) {
-      setState(() {
-        _logs.add(log);
-      });
-    });
-    _databaseChangeSubscription = GlobalManager.instance.databaseChangeStream.listen((_) async {
-      await _refreshData();
-    });
+    // Listen to any changes in the database and refresh the data.
+    _databaseChangeSubscription =
+        GlobalManager.instance.databaseChangeStream.listen((_) async {
+          await _refreshData();
+        });
   }
 
-  /// Function to generate data
+  /// Generates test telemetry data using a fixed uniqueId.
   Future<void> _generateData() async {
-    await GlobalManager.instance.storeAttribute('testKey', 'testValue', 'testType');
+    // In a real scenario, replace the test uniqueId with the actual device identifier.
+    await GlobalManager.instance
+        .storeStoredData('CC-TS-00000', 'testKey', 'testValue');
     setState(() {});
   }
 
-  /// Function to refresh data from the database
+  /// Refreshes telemetry data from the database.
   Future<void> _refreshData() async {
-    final logs = await GlobalManager.instance.getAttributes();
+    final data = await GlobalManager.instance.getStoredData('CC-TS-00000');
     setState(() {
-      _logsCapteurs.clear();
-      _logsCapteurs.addAll(logs);
+      _telemetryData
+        ..clear()
+        ..addAll(data);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return Scaffold(
-      appBar: AppBar(backgroundColor: theme.colorScheme.inversePrimary, title: Text(widget.title)),
+      appBar: AppBar(
+        backgroundColor: theme.colorScheme.inversePrimary,
+        title: Text(widget.title),
+      ),
       body: ListView(
         children: [
-          for (final log in _logs)Card(
-            margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-            child: ListTile(
-              //the title of the card is the timestamp of the log
-              title: Text(log.timestamp.toString()),
-
-              leading: const Icon(Icons.http, color: Colors.blue),
+          for (final entry in _telemetryData)
+            Card(
+              margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              child: ListTile(
+                title: Text('Timestamp: ${entry['timestamp']}'),
+                subtitle:
+                Text('Key: ${entry['key']} - Value: ${entry['value']}'),
+                leading: const Icon(Icons.sensors, color: Colors.green),
+              ),
             ),
-          ),
-          for (final log in _logsCapteurs)Card(
-            margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-            child: ListTile(
-              title: Text(log['timestamp'].toString()),
-
-              subtitle: Text('Component ID: ${log['key']}, Type: ${log['type']}'),
-              leading: const Icon(Icons.sensors, color: Colors.green),
-            ),
-          ),
         ],
       ),
       floatingActionButton: Column(
@@ -104,10 +87,7 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 16),
           FloatingActionButton(
             onPressed: () {
-              setState(() {
-                _logs.clear();
-                _logsCapteurs.clear();
-              });
+              setState(_telemetryData.clear);
             },
             tooltip: 'Clear',
             child: const Icon(Icons.clear),
@@ -118,9 +98,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
-  void dispose() {
-    unawaited(_logSubscription?.cancel());
-    unawaited(_databaseChangeSubscription?.cancel());
+  Future<void> dispose() async {
+    await _databaseChangeSubscription?.cancel();
     super.dispose();
   }
 }

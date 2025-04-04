@@ -27,7 +27,7 @@ void main() {
   });
 
   test('Registration returns API key', () async {
-    final channel = IOWebSocketChannel.connect('ws://localhost:8080/ws');
+    final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
     // Use a StreamQueue to read messages sequentially.
     final queue = StreamQueue(channel.stream);
 
@@ -53,7 +53,7 @@ void main() {
   });
 
   test('Authenticated fails without API key', () async {
-    final channel = IOWebSocketChannel.connect('ws://localhost:8080/ws');
+    final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
     final queue = StreamQueue(channel.stream);
 
     // Register the device.
@@ -86,7 +86,7 @@ void main() {
   });
 
   test('Authenticated action with invalid API key', () async {
-    final channel = IOWebSocketChannel.connect('ws://localhost:8080/ws');
+    final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
     final queue = StreamQueue(channel.stream);
 
     // Register the device.
@@ -120,7 +120,7 @@ void main() {
   });
 
   test('Authenticated action with valid API key', () async {
-    final channel = IOWebSocketChannel.connect('ws://localhost:8080/ws');
+    final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
     final queue = StreamQueue(channel.stream);
 
     // Register the device.
@@ -133,6 +133,7 @@ void main() {
     final registerResponse = await queue.next;
     final registerData = jsonDecode(registerResponse as String);
     expect(registerData['status'], equals('success'));
+    print("seuccessfully registered");
     final apiKey = registerData['apiKey'];
 
     // Send sensor data with the valid API key.
@@ -145,11 +146,12 @@ void main() {
       'apiKey': apiKey,
     });
     channel.sink.add(sendDataMessage);
+    print("successfully sent data");
     final dataResponse = await queue.next;
+    print("reponse: $dataResponse");
     final dataResult = jsonDecode(dataResponse as String);
     expect(dataResult['status'], equals('success'));
     expect(dataResult['message'], contains('Data stored'));
-
     await channel.sink.close();
     await queue.cancel();
   });
