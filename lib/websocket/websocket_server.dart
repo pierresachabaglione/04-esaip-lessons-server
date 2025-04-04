@@ -9,7 +9,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 /// The server that allows interaction with the devices.
 class WebSocketServer {
   HttpServer? _server;
-  final Map<String, WebSocketChannel> _clients = {}; // Track clients by uniqueId.
+  final Map<String, WebSocketChannel> _clients =
+      {}; // Track clients by uniqueId.
 
   /// Starts the WebSocket server.
   Future<void> start({int port = 8888}) async {
@@ -23,7 +24,7 @@ class WebSocketServer {
     final channel = IOWebSocketChannel(socket);
     print('New client connected');
     channel.stream.listen(
-          (message) async => _handleMessage(channel, message as String),
+      (message) async => _handleMessage(channel, message as String),
       onDone: () => _handleDisconnect(channel),
       onError: (error) => print('Error: $error'),
     );
@@ -37,7 +38,9 @@ class WebSocketServer {
       final uniqueId = data['uniqueId'] as String?;
 
       if (uniqueId == null) {
-        channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing uniqueId'}));
+        channel.sink.add(
+          jsonEncode({'status': 'error', 'message': 'Missing uniqueId'}),
+        );
         return;
       }
 
@@ -45,19 +48,26 @@ class WebSocketServer {
       if (action != 'register' && action != 'hello') {
         final providedKey = data['apiKey'] as String?;
         if (providedKey == null) {
-          channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing API key'}));
+          channel.sink.add(
+            jsonEncode({'status': 'error', 'message': 'Missing API key'}),
+          );
           return;
         }
         final deviceRecords = await DatabaseFunctions().getDevice(uniqueId);
-        if (deviceRecords.isEmpty || deviceRecords.first['apiKey'] != providedKey) {
-          channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid API key'}));
+        if (deviceRecords.isEmpty ||
+            deviceRecords.first['apiKey'] != providedKey) {
+          channel.sink.add(
+            jsonEncode({'status': 'error', 'message': 'Invalid API key'}),
+          );
           return;
         }
       }
 
       switch (action) {
         case 'hello':
-          channel.sink.add(jsonEncode({'status': 'success', 'message': 'Hello from server!'}));
+          channel.sink.add(
+            jsonEncode({'status': 'success', 'message': 'Hello from server!'}),
+          );
           break;
         case 'register':
           await _handleRegister(channel, data);
@@ -71,67 +81,111 @@ class WebSocketServer {
         case 'sendMessageToClient':
           await _handleSendMessageToClient(channel, data);
           break;
+        case 'getStoredData':
+          await _handleGetStoredData(channel, uniqueId);
+          break;
+        case 'setAttribute':
+          await _handleSetAttribute(channel, data);
+          break;
+        case 'deleteAttribute':
+          await _handleDeleteAttribute(channel, data);
+          break;
+        case 'getAttributes':
+          await _handleGetAttributes(channel, data);
+          break;
         default:
-          channel.sink.add(jsonEncode({'status': 'error', 'message': 'Unknown action'}));
+          channel.sink.add(
+            jsonEncode({'status': 'error', 'message': 'Unknown action'}),
+          );
       }
     } catch (e) {
-      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid JSON format'}));
+      channel.sink.add(
+        jsonEncode({'status': 'error', 'message': 'Invalid JSON format'}),
+      );
     }
   }
 
   /// Registration handler.
-  Future<void> _handleRegister(WebSocketChannel channel, Map<String, dynamic> data) async {
+  Future<void> _handleRegister(
+    WebSocketChannel channel,
+    Map<String, dynamic> data,
+  ) async {
     final uniqueId = data['uniqueId'] as String?;
     final type = data['type'] as String?;
 
     if (uniqueId == null || type == null) {
-      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing registration fields'}));
+      channel.sink.add(
+        jsonEncode({
+          'status': 'error',
+          'message': 'Missing registration fields',
+        }),
+      );
       return;
     }
 
     final regExp = RegExp(r'^CC-(TS|YT)-\d{5}$');
     if (!regExp.hasMatch(uniqueId)) {
-      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid uniqueId format'}));
+      channel.sink.add(
+        jsonEncode({'status': 'error', 'message': 'Invalid uniqueId format'}),
+      );
       return;
     }
 
     final existingDevice = await DatabaseFunctions().getDevice(uniqueId);
     if (existingDevice.isNotEmpty) {
-      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Device already registered'}));
+      channel.sink.add(
+        jsonEncode({'status': 'error', 'message': 'Device already registered'}),
+      );
       return;
     }
 
     final apiKey = await DatabaseFunctions().registerDevice(uniqueId, type);
     _clients[uniqueId] = channel;
-    channel.sink.add(jsonEncode({
-      'status': 'success',
-      'message': 'Device registered',
-      'apiKey': apiKey
-    }));
+    channel.sink.add(
+      jsonEncode({
+        'status': 'success',
+        'message': 'Device registered',
+        'apiKey': apiKey,
+      }),
+    );
   }
 
   /// Unregistration handler.
-  Future<void> _handleUnregister(WebSocketChannel channel, Map<String, dynamic> data) async {
+  Future<void> _handleUnregister(
+    WebSocketChannel channel,
+    Map<String, dynamic> data,
+  ) async {
     final uniqueId = data['uniqueId'] as String?;
     if (uniqueId == null) {
-      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing uniqueId'}));
+      channel.sink.add(
+        jsonEncode({'status': 'error', 'message': 'Missing uniqueId'}),
+      );
       return;
     }
     final isRegistered = await DatabaseFunctions().isDeviceRegistered(uniqueId);
     if (!isRegistered) {
-      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Device not registered'}));
+      channel.sink.add(
+        jsonEncode({'status': 'error', 'message': 'Device not registered'}),
+      );
       return;
     }
     await DatabaseFunctions().unregisterDevice(uniqueId);
     _clients.remove(uniqueId);
-    channel.sink.add(jsonEncode({'status': 'success', 'message': 'Device unregistered'}));
+    channel.sink.add(
+      jsonEncode({'status': 'success', 'message': 'Device unregistered'}),
+    );
   }
 
   /// Data store handler.
-  Future<void> _handleData(WebSocketChannel channel, Map<String, dynamic> data) async {
+  Future<void> _handleData(
+    WebSocketChannel channel,
+    Map<String, dynamic> data,
+  ) async {
     final uniqueId = data['uniqueId'] as String?;
     if (uniqueId == null) {
-      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing uniqueId'}));
+      channel.sink.add(
+        jsonEncode({'status': 'error', 'message': 'Missing uniqueId'}),
+      );
       return;
     }
 
@@ -143,39 +197,91 @@ class WebSocketServer {
         final db = await DatabaseFunctions().database;
         final batch = db.batch();
         for (final entry in payload.entries) {
-          batch.insert(
-            'stored_data',
-            {
-              'uniqueId': uniqueId,
-              'key': entry.key,
-              'value': entry.value.toString()
-            },
-          );
+          batch.insert('stored_data', {
+            'uniqueId': uniqueId,
+            'key': entry.key,
+            'value': entry.value.toString(),
+          });
         }
         await batch.commit(noResult: true);
-        channel.sink.add(jsonEncode({'status': 'success', 'message': 'Data stored'}));
+        channel.sink.add(
+          jsonEncode({'status': 'success', 'message': 'Data stored'}),
+        );
         return;
       } else if (payload is String) {
         print("recongised as string");
         // If the payload is only a string we store it using a default key.
         await DatabaseFunctions().insertStoredData(uniqueId, 'data', payload);
-        channel.sink.add(jsonEncode({'status': 'success', 'message': 'Data stored'}));
+        channel.sink.add(
+          jsonEncode({'status': 'success', 'message': 'Data stored'}),
+        );
         return;
       }
-    }
-    else if (data.containsKey('key')) {
+    } else if (data.containsKey('key')) {
       final key = data['key'] as String?;
       final value = data['value'] as String?;
       if (key == null || value == null) {
-        channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing key or value'}));
+        channel.sink.add(
+          jsonEncode({'status': 'error', 'message': 'Missing key or value'}),
+        );
         return;
       }
       await DatabaseFunctions().insertStoredData(uniqueId, key, value);
-      channel.sink.add(jsonEncode({'status': 'success', 'message': 'Data stored'}));
+      channel.sink.add(
+        jsonEncode({'status': 'success', 'message': 'Data stored'}),
+      );
     } else {
-      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid data format'}));
+      channel.sink.add(
+        jsonEncode({'status': 'error', 'message': 'Invalid data format'}),
+      );
     }
+  }
 
+  /// Retrieves stored data for a given device by its serial number.
+  Future<void> _handleGetStoredData(
+      WebSocketChannel channel,
+      String uniqueId,
+      ) async {
+    try {
+      final storedData = await DatabaseFunctions().getStoredData(uniqueId);
+
+      if (storedData.isEmpty) {
+        channel.sink.add(
+          jsonEncode({
+            'status': 'error',
+            'message': 'No data found for device $uniqueId',
+          }),
+        );
+        return;
+      }
+
+      dynamic reconstructedData;
+      // If only one entry with key 'data', assume a simple string payload.
+      if (storedData.length == 1 && storedData.first['key'] == 'data') {
+        reconstructedData = storedData.first['value'];
+      } else {
+        // Otherwise, rebuild as a map.
+        Map<String, dynamic> dataMap = {};
+        for (final entry in storedData) {
+          dataMap[entry['key'] as String] = entry['value'];
+        }
+        reconstructedData = dataMap;
+      }
+      channel.sink.add(
+        jsonEncode({
+          'status': 'success',
+          'message': 'Stored data retrieved successfully',
+          'data': reconstructedData,
+        }),
+      );
+    } catch (e) {
+      channel.sink.add(
+        jsonEncode({
+          'status': 'error',
+          'message': 'Failed to retrieve stored data',
+        }),
+      );
+    }
   }
 
   /// Sends a broadcast message to all connected clients.
@@ -184,7 +290,8 @@ class WebSocketServer {
       channel.sink.add(message);
     }
   }
-/// Sends a message to a specific client.
+
+  /// Sends a message to a specific client.
   void sendMessageToClient(String targetId, String message) {
     final targetClient = _clients[targetId];
     if (targetClient != null) {
@@ -193,20 +300,121 @@ class WebSocketServer {
   }
 
   /// Sends a message to a specific client.
-  Future<void> _handleSendMessageToClient(WebSocketChannel sender, Map<String, dynamic> data) async {
+  Future<void> _handleSendMessageToClient(
+    WebSocketChannel sender,
+    Map<String, dynamic> data,
+  ) async {
     final targetId = data['targetId'] as String?;
     final message = data['message'] as String?;
     if (targetId == null || message == null) {
-      sender.sink.add(jsonEncode({'status': 'error', 'message': 'Missing targetId or message'}));
+      sender.sink.add(
+        jsonEncode({
+          'status': 'error',
+          'message': 'Missing targetId or message',
+        }),
+      );
       return;
     }
     final targetClient = _clients[targetId];
     if (targetClient != null) {
-      targetClient.sink.add(jsonEncode({'status': 'success', 'message': message}));
-      sender.sink.add(jsonEncode({'status': 'success', 'message': 'Message sent to $targetId'}));
+      targetClient.sink.add(
+        jsonEncode({'status': 'success', 'message': message}),
+      );
+      sender.sink.add(
+        jsonEncode({
+          'status': 'success',
+          'message': 'Message sent to $targetId',
+        }),
+      );
     } else {
-      sender.sink.add(jsonEncode({'status': 'error', 'message': 'Client not found'}));
+      sender.sink.add(
+        jsonEncode({'status': 'error', 'message': 'Client not found'}),
+      );
     }
+  }
+
+  /// Creates /Update a client/server attribute.
+  /// The attribute type is determined by the uniqueId.
+  /// TS attributes are for the things --> client
+  /// YT attributes are for the connected apps --> server
+  Future<void> _handleSetAttribute(
+      WebSocketChannel channel, Map<String, dynamic> data) async {
+    final uniqueId = data['uniqueId'] as String?;
+    final key = data['key'] as String?;
+    final value = data['value'] as String?;
+    if (uniqueId == null || key == null || value == null) {
+      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing attribute fields'}));
+      return;
+    }
+    // Determine attribute type from the uniqueId.
+    final attributeType = uniqueId.contains('TS')
+        ? 'client'
+        : uniqueId.contains('YT')
+        ? 'server'
+        : null;
+    if (attributeType == null) {
+      channel.sink.add(jsonEncode({
+        'status': 'error',
+        'message': 'Invalid device type in uniqueId',
+      }));
+      return;
+    }
+    await DatabaseFunctions().setAttribute(uniqueId, attributeType, key, value);
+    channel.sink.add(jsonEncode({
+      'status': 'success',
+      'message': 'Attribute set',
+      'attributeType': attributeType
+    }));
+  }
+
+  /// Handles deletion of an attribute.
+  Future<void> _handleDeleteAttribute(
+      WebSocketChannel channel, Map<String, dynamic> data) async {
+    final uniqueId = data['uniqueId'] as String?;
+    final key = data['key'] as String?;
+    if (uniqueId == null || key == null ) {
+      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing attribute fields'}));
+      return;
+    }
+// Determine attribute type from the uniqueId.
+    final attributeType = uniqueId.contains('TS')
+        ? 'client'
+        : uniqueId.contains('YT')
+        ? 'server'
+        : null;
+    if (attributeType == null) {
+      channel.sink.add(jsonEncode({
+        'status': 'error',
+        'message': 'Invalid device type in uniqueId',
+      }));
+      return;
+    }
+    await DatabaseFunctions().deleteAttribute(uniqueId, attributeType, key);
+    channel.sink.add(
+      jsonEncode({'status': 'success', 'message': 'Attribute deleted'}),
+    );
+  }
+
+  /// Handles retrieval of attributes, with optional filtering by type.
+  /// TS attributes are for the things --> client
+  /// YT attributes are for the connected apps --> server
+  Future<void> _handleGetAttributes(
+      WebSocketChannel channel, Map<String, dynamic> data) async {
+    final uniqueId = data['uniqueId'] as String?;
+    final filterType = data['filterType'] as String?; // Optional: "server" or "client"
+    if (uniqueId == null) {
+      channel.sink.add(
+        jsonEncode({'status': 'error', 'message': 'Missing uniqueId'}),
+      );
+      return;
+    }
+    final attributes =
+    await DatabaseFunctions().getAttributes(uniqueId, attributeType: filterType);
+    channel.sink.add(jsonEncode({
+      'status': 'success',
+      'message': 'Attributes retrieved',
+      'data': attributes,
+    }));
   }
 
   /// Handles client disconnection.
