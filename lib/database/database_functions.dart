@@ -2,6 +2,9 @@
 /// the application/manager and the sqlite database.
 library;
 
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
@@ -76,6 +79,17 @@ class DatabaseFunctions {
          FOREIGN KEY(uniqueId) REFERENCES devices(uniqueId) ON DELETE CASCADE
        )
      ''');
+    //we create the user / password table
+    await db.execute('''
+    CREATE TABLE users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT UNIQUE NOT NULL,
+          passwordHash TEXT NOT NULL,
+          uniqueId TEXT,
+          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(uniqueId) REFERENCES devices(uniqueId) ON DELETE CASCADE
+        )
+      ''');
   }
 
   /// Registers a device using its uniqueId and type, then returns a unique API key.
@@ -185,5 +199,53 @@ class DatabaseFunctions {
       return db.query('settings', where: 'uniqueId = ?', whereArgs: [uniqueId]);
     }
   }
+  /// Retrieves all attributes for a device.
+  Future<int> registerUser(String username, String password, {String? uniqueId}) async{
+    final db = await database;
+    //we hash the password using sha512
+    final passwordHash = sha512.convert(utf8.encode(password)).toString();
+    return db.insert('users', {
+      'username': username,
+      'passwordHash': passwordHash,
+      'uniqueId': uniqueId, // optionally associate with a device
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
+  /// Authenticates a user by checking the provided username and password.
+  Future<Map<String, dynamic>?> authenticateUser(String username, String password) async {
+    final db = await database;
+    final results = await db.query(
+      'users',
+      where: 'username = ?',
+      whereArgs: [username],
+    );
+
+    if (results.isEmpty) {
+      return null;
+    }
+
+    final user = results.first;
+    final storedHash = user['passwordHash'] as String;
+    //We check if the password hash is the same as the one in the database
+    final providedHash = sha512.convert(utf8.encode(password)).toString();
+    if (providedHash == storedHash) {
+      return user;
+    }
+    return null;
+  }
+
+  ///function to check if the user already exists
+  Future<bool> userExists(String username) async{
+    final db = await database;
+    final results = await db.query(
+      'users',
+      where: 'username = ?',
+      whereArgs: [username],
+    );
+    return results.isNotEmpty;
+  }
+
+
 
 }
