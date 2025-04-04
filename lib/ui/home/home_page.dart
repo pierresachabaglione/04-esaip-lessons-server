@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 class HomePage extends StatefulWidget {
   /// Constructor for the home page.
   const HomePage({super.key, required this.title});
+
   /// Title of the home page.
   final String title;
 
@@ -24,8 +25,8 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     // Listen to any changes in the database and refresh the data.
-    _databaseChangeSubscription =
-        GlobalManager.instance.databaseChangeStream.listen((_) async {
+    _databaseChangeSubscription = GlobalManager.instance.databaseChangeStream
+        .listen((_) async {
           await _refreshData();
         });
   }
@@ -33,8 +34,11 @@ class _HomePageState extends State<HomePage> {
   /// Generates test telemetry data using a fixed uniqueId.
   Future<void> _generateData() async {
     // In a real scenario, replace the test uniqueId with the actual device identifier.
-    await GlobalManager.instance
-        .storeStoredData('CC-TS-00000', 'testKey', 'testValue');
+    await GlobalManager.instance.storeStoredData(
+      'CC-TS-00000',
+      'testKey',
+      'testValue',
+    );
     setState(() {});
   }
 
@@ -63,8 +67,9 @@ class _HomePageState extends State<HomePage> {
               margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
               child: ListTile(
                 title: Text('Timestamp: ${entry['timestamp']}'),
-                subtitle:
-                Text('Key: ${entry['key']} - Value: ${entry['value']}'),
+                subtitle: Text(
+                  'Key: ${entry['key']} - Value: ${entry['value']}',
+                ),
                 leading: const Icon(Icons.sensors, color: Colors.green),
               ),
             ),

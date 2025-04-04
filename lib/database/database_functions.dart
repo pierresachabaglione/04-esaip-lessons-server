@@ -35,10 +35,12 @@ class DatabaseFunctions {
     await deleteDatabase(path);
     return openDatabase(path, version: 1, onCreate: _onCreate);
   }
+
   /// Deletes the database and resets the instance.
   static void resetInstance() {
     _database = null;
   }
+
   Future<void> _onCreate(Database db, int version) async {
     // Create devices table.
     await db.execute('''
@@ -59,6 +61,19 @@ class DatabaseFunctions {
          value TEXT,
          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
          FOREIGN KEY (uniqueId) REFERENCES devices(uniqueId) ON DELETE CASCADE
+       )
+     ''');
+
+    //create the attributes table
+    await db.execute('''
+       CREATE TABLE settings (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         uniqueId TEXT NOT NULL,
+         type TEXT NOT NULL,
+         key TEXT NOT NULL,
+         value TEXT NOT NULL,
+         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+         FOREIGN KEY(uniqueId) REFERENCES devices(uniqueId) ON DELETE CASCADE
        )
      ''');
   }
@@ -85,7 +100,11 @@ class DatabaseFunctions {
   /// Checks if a device is registered.
   Future<bool> isDeviceRegistered(String uniqueId) async {
     final db = await database;
-    final result = await db.query('devices', where: 'uniqueId = ?', whereArgs: [uniqueId]);
+    final result = await db.query(
+      'devices',
+      where: 'uniqueId = ?',
+      whereArgs: [uniqueId],
+    );
     return result.isNotEmpty;
   }
 
@@ -96,13 +115,18 @@ class DatabaseFunctions {
   }
 
   /// Inserts telemetry data into the stored_data table.
-  Future<void> insertStoredData(String uniqueId, String key, String value) async {
+  Future<void> insertStoredData(
+    String uniqueId,
+    String key,
+    String value,
+  ) async {
     final db = await database;
     try {
-      await db.insert(
-        'stored_data',
-        {'uniqueId': uniqueId, 'key': key, 'value': value},
-      );
+      await db.insert('stored_data', {
+        'uniqueId': uniqueId,
+        'key': key,
+        'value': value,
+      });
     } catch (e) {
       print('Error inserting stored data: $e');
     }
@@ -111,7 +135,11 @@ class DatabaseFunctions {
   /// Retrieves all stored data associated with a device.
   Future<List<Map<String, dynamic>>> getStoredData(String uniqueId) async {
     final db = await database;
-    return db.query('stored_data', where: 'uniqueId = ?', whereArgs: [uniqueId]);
+    return db.query(
+      'stored_data',
+      where: 'uniqueId = ?',
+      whereArgs: [uniqueId],
+    );
   }
 
   /// Retrieves all devices stored in the database.
@@ -119,4 +147,43 @@ class DatabaseFunctions {
     final db = await database;
     return db.query('devices');
   }
+
+  /// Creates or updates an attribute (setting) for a device.
+  /// [attributeType] should be "server" or "client".
+  Future<void> setAttribute(
+      String uniqueId, String attributeType, String key, String value) async {
+    final db = await database;
+    await db.insert('settings', {
+      'uniqueId': uniqueId,
+      'type': attributeType,
+      'key': key,
+      'value': value,
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Deletes an attribute (setting) for a device.
+  Future<void> deleteAttribute(
+      String uniqueId, String attributeType, String key) async {
+    final db = await database;
+    await db.delete('settings',
+        where: 'uniqueId = ? AND type = ? AND key = ?',
+        whereArgs: [uniqueId, attributeType, key]);
+  }
+
+  /// Retrieves attributes for a device.
+  /// If [attributeType] is provided, it filters by that type
+  /// client attributes are for the things
+  /// server attributes are for the connected apps
+  Future<List<Map<String, dynamic>>> getAttributes(String uniqueId,
+      {String? attributeType}) async {
+    final db = await database;
+    if (attributeType != null) {
+      return db.query('settings',
+          where: 'uniqueId = ? AND type = ?', whereArgs: [uniqueId, attributeType]);
+    } else {
+      return db.query('settings', where: 'uniqueId = ?', whereArgs: [uniqueId]);
+    }
+  }
+
 }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:async/async.dart'; // For StreamQueue
 import 'package:esaip_lessons_server/database/database_functions.dart';
 import 'package:esaip_lessons_server/websocket/websocket_server.dart';
@@ -23,7 +24,7 @@ void main() {
     await server.close();
   });
 
-  test('Device can send multiple data parameters', () async {
+  test('Device can send multiple data parameters and retrieve reconstructed data', () async {
     final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
     final queue = StreamQueue(channel.stream);
 
@@ -40,10 +41,10 @@ void main() {
     final registerData = jsonDecode(registerResponse as String);
     expect(registerData['status'], equals('success'));
 
-    // We store the API key for later use.
+    // Store the API key for later use.
     final apiKey = registerData['apiKey'];
 
-    // we send the data with multiple entries
+    // Send data with multiple entries.
     final sendDataMessage = jsonEncode({
       'action': 'sendData',
       'uniqueId': uniqueId,
@@ -53,34 +54,42 @@ void main() {
         'temperature': '25.5',
         'gps': '40.7128,-74.0060',
         'humidity': '60%'
-      }
+      },
     });
     channel.sink.add(sendDataMessage);
 
-    // we waite for the response
+    // Wait for the sendData response.
     final sendResponse = await queue.next;
     final sendResponseData = jsonDecode(sendResponse as String);
     expect(sendResponseData['status'], equals('success'));
     expect(sendResponseData['message'], contains('Data stored'));
 
-    // Verify that the data was stored in the database.
-    final storedData = await database.getStoredData(uniqueId);
-    // Convert stored keys to a list for easy checking.
-    final keys = storedData.map((entry) => entry['key']).toList();
-    expect(keys, contains('temperature'));
-    expect(keys, contains('gps'));
-    expect(keys, contains('humidity'));
+    // Request stored data through WebSocket.
+    final getDataMessage = jsonEncode({
+      'action': 'getStoredData',
+      'uniqueId': uniqueId,
+      'apiKey': apiKey,
+    });
+    channel.sink.add(getDataMessage);
 
-    // Optionally, verify the actual values.
-    final temperatureEntry = storedData.firstWhere((entry) => entry['key'] == 'temperature');
-    expect(temperatureEntry['value'], equals('25.5'));
+    // Wait for the getStoredData response.
+    final dataResponse = await queue.next;
+    final responseData = jsonDecode(dataResponse as String);
 
-    final gpsEntry = storedData.firstWhere((entry) => entry['key'] == 'gps');
-    expect(gpsEntry['value'], equals('40.7128,-74.0060'));
+    expect(responseData['status'], equals('success'));
+    expect(responseData['message'], contains('Stored data retrieved successfully'));
 
-    final humidityEntry = storedData.firstWhere((entry) => entry['key'] == 'humidity');
-    expect(humidityEntry['value'], equals('60%'));
+    // With multiple entries, the server reconstructs the data as a Map.
+    expect(responseData['data'], isA<Map>());
+    final reconstructedData = responseData['data'] as Map<String, dynamic>;
+    expect(reconstructedData['temperature'], equals('25.5'));
+    expect(reconstructedData['gps'], equals('40.7128,-74.0060'));
+    expect(reconstructedData['humidity'], equals('60%'));
 
     await channel.sink.close();
+    await queue.cancel();
   });
+
+
+
 }
