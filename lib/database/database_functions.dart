@@ -226,7 +226,7 @@ class DatabaseFunctions {
     }
 
     final user = results.first;
-    final storedHash = user['passwordHash'] as String;
+    final storedHash = user['passwordHash']! as String;
     //We check if the password hash is the same as the one in the database
     final providedHash = sha512.convert(utf8.encode(password)).toString();
     if (providedHash == storedHash) {
