@@ -37,37 +37,43 @@ class WebSocketServer {
       final action = data['action'] as String;
       final uniqueId = data['uniqueId'] as String?;
 
-      if (uniqueId == null) {
-        channel.sink.add(
-          jsonEncode({'status': 'error', 'message': 'Missing uniqueId'}),
-        );
-        return;
-      }
-
-      // Bypass API key check for trivial actions.
+      // For actions other than 'register' and 'hello', check API key.
       if (action != 'register' && action != 'hello') {
         final providedKey = data['apiKey'] as String?;
         if (providedKey == null) {
-          channel.sink.add(
-            jsonEncode({'status': 'error', 'message': 'Missing API key'}),
-          );
+          channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing API key'}));
           return;
         }
-        final deviceRecords = await DatabaseFunctions().getDevice(uniqueId);
-        if (deviceRecords.isEmpty ||
-            deviceRecords.first['apiKey'] != providedKey) {
-          channel.sink.add(
-            jsonEncode({'status': 'error', 'message': 'Invalid API key'}),
-          );
+        final deviceRecords = await DatabaseFunctions().getDevice(uniqueId!);
+        if (deviceRecords.isEmpty || deviceRecords.first['apiKey'] != providedKey) {
+          channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid API key'}));
           return;
+        }
+        // Additional check for CC-MP devices: if uniqueId contains "CC-MP", require user authentication.
+        if (uniqueId.contains('CC-MP')) {
+          final username = data['username'] as String?;
+          final password = data['password'] as String?;
+          if (username == null || password == null) {
+            channel.sink.add(jsonEncode({
+              'status': 'error',
+              'message': 'Missing username or password for CC-MP device'
+            }));
+            return;
+          }
+          final user = await DatabaseFunctions().authenticateUser(username, password);
+          if (user == null) {
+            channel.sink.add(jsonEncode({
+              'status': 'error',
+              'message': 'Invalid username or password for CC-MP device'
+            }));
+            return;
+          }
         }
       }
 
       switch (action) {
         case 'hello':
-          channel.sink.add(
-            jsonEncode({'status': 'success', 'message': 'Hello from server!'}),
-          );
+          channel.sink.add(jsonEncode({'status': 'success', 'message': 'Hello from server!'}));
           break;
         case 'register':
           await _handleRegister(channel, data);
@@ -82,7 +88,7 @@ class WebSocketServer {
           await _handleSendMessageToClient(channel, data);
           break;
         case 'getStoredData':
-          await _handleGetStoredData(channel, uniqueId);
+          await _handleGetStoredData(channel, data);
           break;
         case 'setAttribute':
           await _handleSetAttribute(channel, data);
@@ -94,62 +100,78 @@ class WebSocketServer {
           await _handleGetAttributes(channel, data);
           break;
         default:
-          channel.sink.add(
-            jsonEncode({'status': 'error', 'message': 'Unknown action'}),
-          );
+          channel.sink.add(jsonEncode({'status': 'error', 'message': 'Unknown action'}));
       }
     } catch (e) {
-      channel.sink.add(
-        jsonEncode({'status': 'error', 'message': 'Invalid JSON format'}),
-      );
+      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid JSON format'}));
     }
   }
 
   /// Registration handler.
-  Future<void> _handleRegister(
-    WebSocketChannel channel,
-    Map<String, dynamic> data,
-  ) async {
+  Future<void> _handleRegister(WebSocketChannel channel, Map<String, dynamic> data) async {
     final uniqueId = data['uniqueId'] as String?;
     final type = data['type'] as String?;
 
     if (uniqueId == null || type == null) {
       channel.sink.add(
+        jsonEncode({'status': 'error', 'message': 'Missing registration fields'}),
+      );
+      return;
+    }
+
+    // For mobile devices (or MP phones), require username and password.
+    if (type == 'mobile' || uniqueId.startsWith('CC-MP-')) {
+      final password = data['password'] as String?;
+      final username = data['username'] as String?;
+      if (password == null || password.isEmpty || username == null || username.isEmpty) {
+        channel.sink.add(
+          jsonEncode({'status': 'error', 'message': 'Missing user / password for mobile registration'}),
+        );
+        return;
+      }
+      final existingDevice = await DatabaseFunctions().getDevice(uniqueId);
+      if (existingDevice.isNotEmpty) {
+        channel.sink.add(
+          jsonEncode({'status': 'error', 'message': 'Device already registered'}),
+        );
+        return;
+      }
+      // Optionally, check if the username is already taken here.
+      await DatabaseFunctions().registerUser(username, password, uniqueId: uniqueId);
+      final apiKey = await DatabaseFunctions().registerDevice(uniqueId, type);
+      _clients[uniqueId] = channel;
+      channel.sink.add(
         jsonEncode({
-          'status': 'error',
-          'message': 'Missing registration fields',
+          'status': 'success',
+          'message': 'Mobile device registered',
+          'apiKey': apiKey,
         }),
       );
-      return;
-    }
-
-    final regExp = RegExp(r'^CC-(TS|YT)-\d{5}$');
-    if (!regExp.hasMatch(uniqueId)) {
+      return; // Exit after handling mobile registration.
+    } else {
+      // For sensor and other devices.
+      final regExp = RegExp(r'^CC-(TS|YT)-\d{5}$');
+      if (!regExp.hasMatch(uniqueId)) {
+        channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid uniqueId format'}));
+        return;
+      }
+      final existingDevice = await DatabaseFunctions().getDevice(uniqueId);
+      if (existingDevice.isNotEmpty) {
+        channel.sink.add(jsonEncode({'status': 'error', 'message': 'Device already registered'}));
+        return;
+      }
+      final apiKey = await DatabaseFunctions().registerDevice(uniqueId, type);
+      _clients[uniqueId] = channel;
       channel.sink.add(
-        jsonEncode({'status': 'error', 'message': 'Invalid uniqueId format'}),
+        jsonEncode({
+          'status': 'success',
+          'message': 'Device registered',
+          'apiKey': apiKey,
+        }),
       );
-      return;
+      return; // Exit after handling sensor/other registration.
     }
-
-    final existingDevice = await DatabaseFunctions().getDevice(uniqueId);
-    if (existingDevice.isNotEmpty) {
-      channel.sink.add(
-        jsonEncode({'status': 'error', 'message': 'Device already registered'}),
-      );
-      return;
-    }
-
-    final apiKey = await DatabaseFunctions().registerDevice(uniqueId, type);
-    _clients[uniqueId] = channel;
-    channel.sink.add(
-      jsonEncode({
-        'status': 'success',
-        'message': 'Device registered',
-        'apiKey': apiKey,
-      }),
-    );
   }
-
   /// Unregistration handler.
   Future<void> _handleUnregister(
     WebSocketChannel channel,
@@ -238,51 +260,70 @@ class WebSocketServer {
   }
 
   /// Retrieves stored data for a given device by its serial number.
-  Future<void> _handleGetStoredData(
-      WebSocketChannel channel,
-      String uniqueId,
-      ) async {
-    try {
-      final storedData = await DatabaseFunctions().getStoredData(uniqueId);
+  Future<void> _handleGetStoredData(WebSocketChannel channel, Map<String, dynamic> data) async {
+    final requesterUniqueId = data['uniqueId'] as String?;
+    final targetUniqueId = data['targetId'] as String?;
 
-      if (storedData.isEmpty) {
-        channel.sink.add(
-          jsonEncode({
-            'status': 'error',
-            'message': 'No data found for device $uniqueId',
-          }),
-        );
+    if (requesterUniqueId == null || targetUniqueId == null) {
+      channel.sink.add(jsonEncode({
+        'status': 'error',
+        'message': 'Missing fields for mobile sensor data request'
+      }));
+      return;
+    }
+
+    // Authenticate the mobile device using its uniqueId and API key.
+    final mobileDevice = await DatabaseFunctions().getDevice(requesterUniqueId);
+    if (mobileDevice.isEmpty) {
+      channel.sink.add(jsonEncode({
+        'status': 'error',
+        'message': 'Invalid mobile device credentials'
+      }));
+      return;
+    }
+
+    // --- Authorization Check ---
+    // If the requester is not asking for its own data, then
+    // allow only if requester is a mobile device and target is a sensor
+    if (requesterUniqueId != targetUniqueId) {
+      if (!(requesterUniqueId.startsWith('CC-MP-') && targetUniqueId.startsWith('CC-TS-'))) {
+        channel.sink.add(jsonEncode({
+          'status': 'error',
+          'message': 'Unauthorized access to sensor data'
+        }));
         return;
       }
-
-      dynamic reconstructedData;
-      // If only one entry with key 'data', assume a simple string payload.
-      if (storedData.length == 1 && storedData.first['key'] == 'data') {
-        reconstructedData = storedData.first['value'];
-      } else {
-        // Otherwise, rebuild as a map.
-        Map<String, dynamic> dataMap = {};
-        for (final entry in storedData) {
-          dataMap[entry['key'] as String] = entry['value'];
-        }
-        reconstructedData = dataMap;
-      }
-      channel.sink.add(
-        jsonEncode({
-          'status': 'success',
-          'message': 'Stored data retrieved successfully',
-          'data': reconstructedData,
-        }),
-      );
-    } catch (e) {
-      channel.sink.add(
-        jsonEncode({
-          'status': 'error',
-          'message': 'Failed to retrieve stored data',
-        }),
-      );
     }
+
+    // Retrieve sensor data for the targetUniqueId.
+    final sensorData = await DatabaseFunctions().getStoredData(targetUniqueId);
+    if (sensorData.isEmpty) {
+      channel.sink.add(jsonEncode({
+        'status': 'error',
+        'message': 'No data found for sensor'
+      }));
+      return;
+    }
+
+    dynamic reconstructedData;
+    // Reconstruct data based on the number of entries.
+    if (sensorData.length == 1 && sensorData.first['key'] == 'data') {
+      reconstructedData = sensorData.first['value'];
+    } else {
+      final dataMap = <String, dynamic>{};
+      for (final entry in sensorData) {
+        dataMap[entry['key'] as String] = entry['value'];
+      }
+      reconstructedData = dataMap;
+    }
+
+    channel.sink.add(jsonEncode({
+      'status': 'success',
+      'message': 'Stored sensor data retrieved successfully',
+      'data': reconstructedData,
+    }));
   }
+
 
   /// Sends a broadcast message to all connected clients.
   void sendMessage(String message) {
