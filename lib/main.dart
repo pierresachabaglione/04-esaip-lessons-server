@@ -7,13 +7,13 @@ import 'package:flutter/material.dart';
 Future<void> main() async {
   // This method forces all initialization async functions to be finished before running the app.
   // This way, we can launch functions at init before the UI is started.
-  // Ths UI starts after these functions are finished.
+  // The UI starts after these functions are finished.
 
   WidgetsFlutterBinding.ensureInitialized();
 
   await GlobalManager.instance.initialize();
 
-  // Initialize and start the WebSocket server
+  // Initialize and start the WebSocket server.
   final webSocketServer = WebSocketServer();
   await webSocketServer.start();
 

@@ -1,86 +1,58 @@
-// SPDX-FileCopyrightText: 2025 Benoit Rolandeau <benoit.rolandeau@allcircuits.com>
-//
+// SPDX-FileCopyrightText: 2025 Pierre-Sacha Baglione
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
 
 import 'package:esaip_lessons_server/database/database_functions.dart';
 import 'package:esaip_lessons_server/managers/abstract_manager.dart';
-import 'package:esaip_lessons_server/managers/http_logging_manager.dart';
-import 'package:esaip_lessons_server/managers/http_server_manager.dart';
-import 'package:esaip_lessons_server/managers/logger_manager.dart';
-//import 'package:esaip_lessons_server/models/http_log.dart';
-/// The global manager manages:
-/// - the global state of the application
-/// - the initialization of the other managers
+
+/// Global manager
 class GlobalManager extends AbstractManager {
   /// Instance of the global manager
   static GlobalManager? _instance;
 
-  /// Instance of the logger manager
-  final LoggerManager loggerManager;
-
-  /// Instance of the http logging manager
-  final HttpLoggingManager httpLoggingManager;
-
-  /// Instance of the http server manager
-  final HttpServerManager httpServerManager;
 
   /// instance of the database function manager
   final DatabaseFunctions databaseFunctions;
- /// Stream controller for the database changes
+  /// Stream controller for the database changes
   final StreamController<void> _databaseChangeController = StreamController<void>.broadcast();
-  /// Stream of database changes
+
+  /// Stream of database changes.
   Stream<void> get databaseChangeStream => _databaseChangeController.stream;
- /// Notify the database change to all functions
+
+  /// Notifies listeners of database changes.
   void notifyDatabaseChange() {
     _databaseChangeController.add(null);
   }
-  /// Instance getter
-  ///
-  /// Create a new instance if it does not exist
 
+  /// Returns the singleton instance of GlobalManager.
   static GlobalManager get instance {
     _instance ??= GlobalManager();
     return _instance!;
   }
 
-  /// Default constructor
+  /// Default constructor.
   GlobalManager()
-    : loggerManager = LoggerManager(),
-      httpLoggingManager = HttpLoggingManager(),
-      httpServerManager = HttpServerManager(),databaseFunctions = DatabaseFunctions();
+      :databaseFunctions = DatabaseFunctions();
 
-  /// Initialize the global manager
-  ///
-  /// Also create and initialize the other managers
+  /// Initializes the global manager and other managers.
   @override
   Future<void> initialize() async {
-    // We initialize the logger manager first, to be able to log the initialization of the other
-    // managers
-    await loggerManager.initialize();
-
-    // Then, we initialize the http logging manager to be able to use it in the http server manager
-    await httpLoggingManager.initialize();
-
-    await httpServerManager.initialize();
     await databaseFunctions.database;
   }
 
-  /// Dispose the global manager and the linked managers
   @override
   Future<void> dispose() async => Future.wait([
-    loggerManager.dispose(),
-    httpLoggingManager.dispose(),
-    httpServerManager.dispose(),
+        _databaseChangeController.close(),
   ]);
 
-  /// Get all attributes from the database
-  Future<List<Map<String, dynamic>>> getAttributes() async => databaseFunctions.getAttributes();
+  /// Retrieves stored telemetry data for a given device.
+  Future<List<Map<String, dynamic>>> getStoredData(String uniqueId) async =>
+      databaseFunctions.getStoredData(uniqueId);
 
-  /// Store a new set of values into the database
-  Future<void> storeAttribute(String key, String value, String type) async {
-    await databaseFunctions.insertAttribute(key, value, type);
+  /// Stores telemetry data for a given device.
+  Future<void> storeStoredData(String uniqueId, String key, String value) async {
+    await databaseFunctions.insertStoredData(uniqueId, key, value);
     notifyDatabaseChange();
   }
 }
