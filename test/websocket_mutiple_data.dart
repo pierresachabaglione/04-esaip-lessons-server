@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:async/async.dart'; // For StreamQueue
 import 'package:esaip_lessons_server/database/database_functions.dart';
 import 'package:esaip_lessons_server/websocket/websocket_server.dart';
@@ -10,10 +9,13 @@ import 'package:web_socket_channel/io.dart';
 void main() {
   late WebSocketServer server;
   late DatabaseFunctions database;
+
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
   setUp(() async {
+    // Reset the singleton instance to avoid reinitialization issues.
+    DatabaseFunctions.resetInstance();
     database = DatabaseFunctions();
     server = WebSocketServer();
     await database.database;
@@ -44,6 +46,7 @@ void main() {
     // Store the API key for later use.
     final apiKey = registerData['apiKey'];
 
+
     // Send data with multiple entries.
     final sendDataMessage = jsonEncode({
       'action': 'sendData',
@@ -69,6 +72,8 @@ void main() {
       'action': 'getStoredData',
       'uniqueId': uniqueId,
       'apiKey': apiKey,
+      'targetId': uniqueId, //Yes it's weird but as a sensor doesn't need to req
+      //uest its own data I use this method to get the data anyway
     });
     channel.sink.add(getDataMessage);
 
@@ -77,7 +82,7 @@ void main() {
     final responseData = jsonDecode(dataResponse as String);
 
     expect(responseData['status'], equals('success'));
-    expect(responseData['message'], contains('Stored data retrieved successfully'));
+    expect(responseData['message'], contains('Stored sensor data retrieved successfully'));
 
     // With multiple entries, the server reconstructs the data as a Map.
     expect(responseData['data'], isA<Map>());
@@ -89,7 +94,4 @@ void main() {
     await channel.sink.close();
     await queue.cancel();
   });
-
-
-
 }

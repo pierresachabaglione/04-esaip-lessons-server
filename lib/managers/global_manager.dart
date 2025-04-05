@@ -1,58 +1,80 @@
-// SPDX-FileCopyrightText: 2025 Pierre-Sacha Baglione
-// SPDX-License-Identifier: MIT
-
+// global_manager.dart
 import 'dart:async';
 import 'package:esaip_lessons_server/database/database_functions.dart';
+import 'package:esaip_lessons_server/websocket/websocket_server.dart';
 
-/// Global manager
+/// GlobalManager is a singleton that manages application-wide state,
+/// including database initialization, server management, and change notifications.
 class GlobalManager {
-  /// Instance of the global manager
   static GlobalManager? _instance;
 
-  /// Instance of the database functions manager.
+  /// The [DatabaseFunctions] instance for database interactions.
   final DatabaseFunctions databaseFunctions;
 
-  /// Stream controller for database changes.
   final StreamController<void> _databaseChangeController =
   StreamController<void>.broadcast();
 
-  /// Stream of database changes.
+  /// A stream notifying listeners of database changes.
   Stream<void> get databaseChangeStream => _databaseChangeController.stream;
 
-  /// Notifies listeners of database changes.
+  /// Notifies listeners that the database has changed.
   void notifyDatabaseChange() {
     _databaseChangeController.add(null);
   }
 
-  /// Returns the singleton instance of GlobalManager.
+  /// Returns the singleton instance of [GlobalManager].
   static GlobalManager get instance {
     _instance ??= GlobalManager();
     return _instance!;
   }
 
-  /// Default constructor.
+  /// Creates a [GlobalManager] instance and initializes [databaseFunctions].
   GlobalManager() : databaseFunctions = DatabaseFunctions();
 
-  /// Initializes the global manager.
+  /// Initializes the manager by ensuring the database is ready.
   Future<void> initialize() async {
     await databaseFunctions.database;
   }
 
-  /// Disposes the global manager.
+  /// Disposes of resources used by the global manager.
   Future<void> dispose() async =>
       Future.wait([_databaseChangeController.close()]);
 
-  /// Retrieves stored telemetry data for a given device.
+  /// Retrieves stored data for a device identified by [uniqueId].
   Future<List<Map<String, dynamic>>> getStoredData(String uniqueId) async =>
       databaseFunctions.getStoredData(uniqueId);
 
-  /// Stores telemetry data for a given device.
-  Future<void> storeStoredData(
-      String uniqueId,
-      String key,
-      String value,
-      ) async {
+  /// Stores data for a device and notifies listeners.
+  Future<void> storeStoredData(String uniqueId, String key, String value) async {
     await databaseFunctions.insertStoredData(uniqueId, key, value);
     notifyDatabaseChange();
+  }
+
+  /// Resets the database by clearing stored data, devices, settings, and users.
+  Future<void> resetDatabase() async {
+    final db = await databaseFunctions.database;
+    await db.delete('stored_data');
+    await db.delete('devices');
+    await db.delete('settings');
+    await db.delete('users');
+    notifyDatabaseChange();
+  }
+
+  // --- New code for WebSocketServer management ---
+  WebSocketServer? _server;
+
+  /// Starts the WebSocket server on the specified IP and port.
+  Future<void> startServer({String ipAddress = '0.0.0.0', int port = 8888}) async {
+    _server = WebSocketServer();
+    await _server!.start(ipAddress: ipAddress, port: port);
+  }
+
+  /// Restarts the WebSocket server using the new [ipAddress] and [port].
+  Future<void> restartServer({required String ipAddress, required int port}) async {
+    if (_server != null) {
+      await _server!.close();
+    }
+    _server = WebSocketServer();
+    await _server!.start(ipAddress: ipAddress, port: port);
   }
 }

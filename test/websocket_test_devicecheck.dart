@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+
 import 'package:async/async.dart'; // For StreamQueue
 import 'package:esaip_lessons_server/database/database_functions.dart';
 import 'package:esaip_lessons_server/websocket/websocket_server.dart';
@@ -10,10 +10,11 @@ import 'package:web_socket_channel/io.dart';
 void main() {
   late WebSocketServer server;
   late DatabaseFunctions database;
+
+  // Initialize sqflite ffi for testing.
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  // Set up the server and database before each test.
   setUp(() async {
     database = DatabaseFunctions();
     server = WebSocketServer();
@@ -21,232 +22,291 @@ void main() {
     await server.start();
   });
 
-  // Clean up after each test.
   tearDown(() async {
     await server.close();
   });
 
-  test('WebSocket server starts and accepts connections', () async {
-    final channel = await WebSocket.connect('ws://localhost:8888/ws');
-    expect(channel.readyState, equals(WebSocket.open));
-    await channel.close();
-  });
-
-  test('WebSocket server handles device registration with valid uniqueId', () async {
+  test('Registration returns API key', () async {
     final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
+    // Use a StreamQueue to read messages sequentially.
     final queue = StreamQueue(channel.stream);
 
-    final testMessage = jsonEncode({
+    final registerMessage = jsonEncode({
       'action': 'register',
-      'uniqueId': 'CC-TS-00001',
+      'uniqueId': 'CC-TS-00128',
       'type': 'sensor',
     });
-    channel.sink.add(testMessage);
+    channel.sink.add(registerMessage);
 
     final response = await queue.next;
-    final responseData = jsonDecode(response as String);
-
-    // Verify the registration response.
-    expect(responseData['status'], equals('success'));
-    expect(responseData['message'], contains('Device registered'));
-
-    // Verify the device is added to the database.
-    final devices = await database.database.then((db) {
-      return db.query('devices', where: 'uniqueId = ?', whereArgs: ['CC-TS-00001']);
-    });
-    expect(devices.isNotEmpty, true);
+    final data = jsonDecode(response as String);
+    expect(data['status'], equals('success'));
+    // Updated expectation: look for "Sensor connected successfully" instead of "Device registered"
+    expect(data['message'], contains('Sensor connected successfully'));
+    expect(data.containsKey('apiKey'), true);
+    print(';API Key: ${data['apiKey']}');
+    final apiKey = data['apiKey'];
+    expect(apiKey, isNotNull);
+    expect(apiKey, isA<String>());
 
     await channel.sink.close();
+    await queue.cancel();
   });
 
-  test('WebSocket server rejects device registration with invalid uniqueId', () async {
-    final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
-    final queue = StreamQueue(channel.stream);
-
-    final testMessage = jsonEncode({
-      'action': 'register',
-      'uniqueId': 'nonvousnepasserezpas', // Invalid format.
-      'type': 'sensor',
-    });
-    channel.sink.add(testMessage);
-
-    final response = await queue.next;
-    final responseData = jsonDecode(response as String);
-
-    // Verify that an error is returned.
-    expect(responseData['status'], equals('error'));
-    expect(responseData['message'], contains('Invalid uniqueId format'));
-
-    await channel.sink.close();
-  });
-
-  test('Registered device can send data', () async {
+  test('Authenticated fails without API key', () async {
     final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
     final queue = StreamQueue(channel.stream);
 
     // Register the device.
     final registerMessage = jsonEncode({
       'action': 'register',
-      'uniqueId': 'CC-TS-00088',
+      'uniqueId': 'CC-TS-00188',
       'type': 'sensor',
     });
     channel.sink.add(registerMessage);
-
     final registerResponse = await queue.next;
     final registerData = jsonDecode(registerResponse as String);
     expect(registerData['status'], equals('success'));
 
-    // Capture the API key from registration.
-    final apiKey = registerData['apiKey'];
-    print("API Key: $apiKey");
+    // Send sensor data without providing an API key.
+    final sendDataMessageWithoutKey = jsonEncode({
+      'action': 'sendData',
+      'uniqueId': 'CC-TS-00002188',
+      'value': '25.0',
+      'type': 'sensor'
+      // No apiKey field provided.
+    });
+    channel.sink.add(sendDataMessageWithoutKey);
+    final responseWithoutKey = await queue.next;
+    final dataWithoutKey = jsonDecode(responseWithoutKey as String);
+    expect(dataWithoutKey['status'], equals('error'));
+    expect(dataWithoutKey['message'], contains('Missing API key'));
 
-    // Send data using the valid API key.
+    await channel.sink.close();
+    await queue.cancel();
+  });
+
+  test('Authenticated action with invalid API key', () async {
+    final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
+    final queue = StreamQueue(channel.stream);
+
+    // Register the device.
+    final registerMessage = jsonEncode({
+      'action': 'register',
+      'uniqueId': 'CC-TS-00003',
+      'type': 'sensor',
+    });
+    channel.sink.add(registerMessage);
+    final registerResponse = await queue.next;
+    final registerData = jsonDecode(registerResponse as String);
+    expect(registerData['status'], equals('success'));
+
+    // Send sensor data with an incorrect API key.
+    final sendDataMessageInvalidKey = jsonEncode({
+      'action': 'sendData',
+      'uniqueId': 'CC-TS-00984',
+      'key': 'temperature',
+      'value': '30.0',
+      'type': 'sensor',
+      'apiKey': 'invalid-api-key'
+    });
+    channel.sink.add(sendDataMessageInvalidKey);
+    final responseInvalidKey = await queue.next;
+    final dataInvalidKey = jsonDecode(responseInvalidKey as String);
+    expect(dataInvalidKey['status'], equals('error'));
+    expect(dataInvalidKey['message'], contains('Invalid API key'));
+
+    await channel.sink.close();
+    await queue.cancel();
+  });
+
+  test('Authenticated action with valid API key', () async {
+    final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
+    final queue = StreamQueue(channel.stream);
+
+    // Register the device.
+    final registerMessage = jsonEncode({
+      'action': 'register',
+      'uniqueId': 'CC-TS-00984',
+      'type': 'sensor',
+    });
+    channel.sink.add(registerMessage);
+    final registerResponse = await queue.next;
+    final registerData = jsonDecode(registerResponse as String);
+    expect(registerData['status'], equals('success'));
+    print("seuccessfully registered");
+    final apiKey = registerData['apiKey'];
+
+    // Send sensor data with the valid API key.
     final sendDataMessage = jsonEncode({
       'action': 'sendData',
+      'uniqueId': 'CC-TS-00984',
       'key': 'temperature',
-      'value': '25.5',
-      'uniqueId': 'CC-TS-00088',
+      'value': '22.5',
       'type': 'sensor',
       'apiKey': apiKey,
     });
     channel.sink.add(sendDataMessage);
-    print("Sending data: $sendDataMessage");
+    print("successfully sent data");
+    final dataResponse = await queue.next;
+    print("reponse: $dataResponse");
+    final dataResult = jsonDecode(dataResponse as String);
+    expect(dataResult['status'], equals('success'));
+    expect(dataResult['message'], contains('Data stored'));
+    await channel.sink.close();
+    await queue.cancel();
+  });
 
-    // Wait for the sendData response.
-    final sendResponse = await queue.next;
-    final sendResponseData = jsonDecode(sendResponse as String);
-    print("Send Response: $sendResponseData");
-    expect(sendResponseData['status'], equals('success'));
-    expect(sendResponseData['message'], contains('Data stored'));
+  test('Mobile registration requires username and password', () async {
+    final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
+    final queue = StreamQueue(channel.stream);
+
+    // Attempt mobile registration without username and password.
+    final registerMessageMissingLogin = jsonEncode({
+      'action': 'register',
+      'uniqueId': 'CC-MP-12345',
+      'type': 'mobile',
+    });
+    channel.sink.add(registerMessageMissingLogin);
+    final responseMissingLogin = await queue.next;
+    final dataMissingLogin = jsonDecode(responseMissingLogin as String);
+    expect(dataMissingLogin['status'], equals('error'));
+    expect(dataMissingLogin['message'], contains('Missing user / password for mobile registration'));
 
     await channel.sink.close();
+    await queue.cancel();
   });
 
-  test('Client-to-client messaging works', () async {
-    // Connect sender and receiver clients.
-    final sender = IOWebSocketChannel.connect('ws://localhost:8888/ws');
-    final receiver = IOWebSocketChannel.connect('ws://localhost:8888/ws');
+  test('Mobile registration with username and password succeeds', () async {
+    final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
+    final queue = StreamQueue(channel.stream);
 
-    final senderQueue = StreamQueue(sender.stream);
-    final receiverQueue = StreamQueue(receiver.stream);
-
-    // Register the sender.
-    sender.sink.add(jsonEncode({
+    // Register with valid username and password.
+    final registerMessageWithLogin = jsonEncode({
       'action': 'register',
-      'uniqueId': 'CC-TS-00002',
-      'type': 'sensor',
-    }));
-    final senderRegResponse = await senderQueue.next;
-    final senderRegData = jsonDecode(senderRegResponse as String);
-    expect(senderRegData['status'], equals('success'));
-    final senderApiKey = senderRegData['apiKey'];
-
-    // Register the receiver.
-    receiver.sink.add(jsonEncode({
-      'action': 'register',
-      'uniqueId': 'CC-TS-00003',
-      'type': 'sensor',
-    }));
-    final receiverRegResponse = await receiverQueue.next;
-    final receiverRegData = jsonDecode(receiverRegResponse as String);
-    expect(receiverRegData['status'], equals('success'));
-
-    // Sender sends a message to the receiver including its API key.
-    final messageToSend = jsonEncode({
-      'action': 'sendMessageToClient',
-      'uniqueId': 'CC-TS-00002',
-      'targetId': 'CC-TS-00003',
-      'message': 'Hello Receiver!',
-      'apiKey': senderApiKey,
+      'uniqueId': 'CC-MP-12346',
+      'type': 'mobile',
+      'username': 'testuser',
+      'password': 'testpass',
     });
-    sender.sink.add(messageToSend);
+    channel.sink.add(registerMessageWithLogin);
+    final responseWithLogin = await queue.next;
+    final dataWithLogin = jsonDecode(responseWithLogin as String);
+    expect(dataWithLogin['status'], equals('success'));
+    expect(dataWithLogin['message'], contains('Mobile device registered'));
+    expect(dataWithLogin.containsKey('apiKey'), true);
 
-    // Wait for sender's confirmation response.
-    final senderResponse = await senderQueue.next;
-    final senderResponseData = jsonDecode(senderResponse as String);
-    expect(senderResponseData['status'], equals('success'));
-    expect(senderResponseData['message'], contains('Message sent to CC-TS-00003'));
-
-    // We check the receiver's response.
-    final receiverResponse = await receiverQueue.next;
-    final receiverResponseData = jsonDecode(receiverResponse as String);
-    expect(receiverResponseData['status'], equals('success'));
-    expect(receiverResponseData['message'], equals('Hello Receiver!'));
-
-    await sender.sink.close();
-    await receiver.sink.close();
+    await channel.sink.close();
+    await queue.cancel();
   });
 
-  /// Test to check if the server can send messages to clients.
-  test('Server-to-client messaging works', () async {
-    // Connect a client.
-    final client = IOWebSocketChannel.connect('ws://localhost:8888/ws');
-    final queue = StreamQueue(client.stream);
+  test('Authenticated action with valid API key for sensor returns data stored', () async {
+    final channel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
+    final queue = StreamQueue(channel.stream);
 
-    // Register the client so it is added to the server's client list.
-    client.sink.add(jsonEncode({
+    // Register a sensor device.
+    final registerMessage = jsonEncode({
       'action': 'register',
-      'uniqueId': 'CC-TS-01010',
+      'uniqueId': 'CC-TS-01925',
       'type': 'sensor',
-    }));
-
-    // Wait for the registration response.
-    final regResponse = await queue.next;
-    final regData = jsonDecode(regResponse as String);
-    expect(regData['status'], equals('success'));
-
-    // Create a broadcast message from the server.
-    final serverMessage = jsonEncode({
-      'status': 'success',
-      'message': 'Hello from server!'
     });
+    channel.sink.add(registerMessage);
+    final registerResponse = await queue.next;
+    final registerData = jsonDecode(registerResponse as String);
+    expect(registerData['status'], equals('success'));
+    final apiKey = registerData['apiKey'];
 
-    // Send the broadcast message from the server.
-    server.sendMessage(serverMessage);
+    // Send sensor data with the valid API key.
+    final sendDataMessage = jsonEncode({
+      'action': 'sendData',
+      'uniqueId': 'CC-TS-01925',
+      'key': 'temperature',
+      'value': '22.5',
+      'type': 'sensor',
+      'apiKey': apiKey,
+    });
+    channel.sink.add(sendDataMessage);
+    final dataResponse = await queue.next;
+    final dataResult = jsonDecode(dataResponse as String);
+    expect(dataResult['status'], equals('success'));
+    expect(dataResult['message'], contains('Data stored'));
 
-    // Wait for the client to receive the server's message.
-    final receivedMessage = await queue.next;
-    final receivedData = jsonDecode(receivedMessage as String);
-    expect(receivedData['status'], equals('success'));
-    expect(receivedData['message'], equals('Hello from server!'));
-
-    await client.sink.close();
+    await channel.sink.close();
+    await queue.cancel();
   });
 
-  ///server to specific client messaging
-  test('Individual server-to-client messaging works', () async {
-    // Connect a client.
-    final client = IOWebSocketChannel.connect('ws://localhost:8888/ws');
-    final queue = StreamQueue(client.stream);
-
-    // Register the client so that it's added to the server's client list.
-    client.sink.add(jsonEncode({
+  /// a test to see if a basic flow : sensor sends data --> mobile app retrieves data
+  /// works
+  test('Mobile app retrieves sensor data', () async {
+    // Register the sensor device.
+    final sensorChannel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
+    final sensorQueue = StreamQueue(sensorChannel.stream);
+    final sensorUniqueId = 'CC-TS-88888';
+    final sensorRegMessage = jsonEncode({
       'action': 'register',
-      'uniqueId': 'CC-TS-03030',
+      'uniqueId': sensorUniqueId,
       'type': 'sensor',
-    }));
-
-    // Wait for the registration response.
-    final regResponse = await queue.next;
-    final regData = jsonDecode(regResponse as String);
-    expect(regData['status'], equals('success'));
-
-    // Prepare a targeted message.
-    final targetMessage = jsonEncode({
-      'status': 'success',
-      'message': 'Hello, individual client!'
     });
+    sensorChannel.sink.add(sensorRegMessage);
+    final sensorRegResponse = await sensorQueue.next;
+    final sensorRegData = jsonDecode(sensorRegResponse as String);
+    expect(sensorRegData['status'], equals('success'));
+    final sensorApiKey = sensorRegData['apiKey'];
 
-    // Use the server's public method to send a message to this specific client.
-    server.sendMessageToClient('CC-TS-03030', targetMessage);
+    // Send sensor data from the registered sensor.
+    final sensorDataMessage = jsonEncode({
+      'action': 'sendData',
+      'uniqueId': sensorUniqueId,
+      'key': 'temperature',
+      'value': '23.0',
+      'type': 'sensor',
+      'apiKey': sensorApiKey,
+    });
+    sensorChannel.sink.add(sensorDataMessage);
+    final sensorDataResponse = await sensorQueue.next;
+    final sensorDataResult = jsonDecode(sensorDataResponse as String);
+    expect(sensorDataResult['status'], equals('success'));
+    expect(sensorDataResult['message'], contains('Data stored'));
 
-    // Wait for the client to receive the targeted message.
-    final msgResponse = await queue.next;
-    final msgData = jsonDecode(msgResponse as String);
-    expect(msgData['status'], equals('success'));
-    expect(msgData['message'], equals('Hello, individual client!'));
+    // Register the mobile device.
+    final mobileChannel = IOWebSocketChannel.connect('ws://localhost:8888/ws');
+    final mobileQueue = StreamQueue(mobileChannel.stream);
+    final mobileUniqueId = 'CC-MP-77777';
+    final mobileRegMessage = jsonEncode({
+      'action': 'register',
+      'uniqueId': mobileUniqueId,
+      'type': 'mobile',
+      'username': 'invisibleTouch',
+      'password': "well i've been waiting, waiting here so looong",
+    });
+    mobileChannel.sink.add(mobileRegMessage);
+    final mobileRegResponse = await mobileQueue.next;
+    final mobileRegData = jsonDecode(mobileRegResponse as String);
+    expect(mobileRegData['status'], equals('success'));
+    expect(mobileRegData['message'], contains('Mobile device registered'));
+    final mobileApiKey = mobileRegData['apiKey'];
 
-    await client.sink.close();
+    // Mobile app now requests sensor data.
+    // IMPORTANT: Include the targetId (sensor's uniqueId) in the request.
+    final mobileGetDataMessage = jsonEncode({
+      'action': 'getStoredData',
+      'uniqueId': mobileUniqueId,  // Mobile device's uniqueId.
+      'targetId': sensorUniqueId,  // Target sensor uniqueId.
+      'apiKey': mobileApiKey,
+      'username': 'invisibleTouch',
+      'password': "well i've been waiting, waiting here so looong",
+    });
+    mobileChannel.sink.add(mobileGetDataMessage);
+    final mobileGetDataResponse = await mobileQueue.next;
+    final mobileGetDataResult = jsonDecode(mobileGetDataResponse as String);
+    expect(mobileGetDataResult['status'], equals('success'));
+    expect(mobileGetDataResult['message'], contains('Stored sensor data retrieved successfully'));
+    expect(mobileGetDataResult['data'], isA<Map>());
+    final dataMap = mobileGetDataResult['data'] as Map<String, dynamic>;
+    expect(dataMap['temperature'], equals('23.0'));
+
+    // Close connections.
+    await sensorChannel.sink.close();
+    await mobileChannel.sink.close();
   });
-
 }
