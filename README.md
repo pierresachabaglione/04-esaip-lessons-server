@@ -67,7 +67,7 @@ La seconde étape fut de créer le serveur WebSocket pour traiter les requêtes 
 > }
 > ```
 
-## Tests unitaires systématiques
+## Tests unitaires
 
 À chaque étape, des fonctions de tests unitaires ont été créées.
 
