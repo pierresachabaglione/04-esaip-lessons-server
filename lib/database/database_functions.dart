@@ -5,6 +5,7 @@ library;
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:logger/logger.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
@@ -17,8 +18,11 @@ class DatabaseFunctions {
   /// Factory constructor.
   factory DatabaseFunctions() => _instance;
 
-  /// Ensure that there is only one instance of the database.
+  /// The SQLite [Database] instance.
   static Database? _database;
+
+  /// Logger instance for production logging.
+  final Logger _logger = Logger();
 
   DatabaseFunctions._internal();
 
@@ -35,7 +39,7 @@ class DatabaseFunctions {
   Future<Database> _initDatabase() async {
     final path = join(await getDatabasesPath(), 'app_database.db');
     // Delete the database if it already exists.
-    await deleteDatabase(path);
+    //await deleteDatabase(path);
     return openDatabase(path, version: 1, onCreate: _onCreate);
   }
 
@@ -47,13 +51,14 @@ class DatabaseFunctions {
   Future<void> _onCreate(Database db, int version) async {
     // Create devices table.
     await db.execute('''
-      CREATE TABLE devices (
-        uniqueId TEXT PRIMARY KEY,
-        type TEXT NOT NULL,
-        apiKey TEXT NOT NULL,
-        timestamp TEXT NOT NULL
-      );
-    ''');
+    CREATE TABLE devices (
+      uniqueId TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      apiKey TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      isBanned INTEGER NOT NULL DEFAULT 0
+    );
+  ''');
 
     // Create stored_data table for telemetry history.
     await db.execute('''
@@ -67,7 +72,7 @@ class DatabaseFunctions {
        )
      ''');
 
-    //create the attributes table
+    // Create the attributes table.
     await db.execute('''
        CREATE TABLE settings (
          id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,20 +84,34 @@ class DatabaseFunctions {
          FOREIGN KEY(uniqueId) REFERENCES devices(uniqueId) ON DELETE CASCADE
        )
      ''');
-    //we create the user / password table
+
+    // Create the user/password table.
     await db.execute('''
     CREATE TABLE users (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          username TEXT UNIQUE NOT NULL,
-          passwordHash TEXT NOT NULL,
-          uniqueId TEXT,
-          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY(uniqueId) REFERENCES devices(uniqueId) ON DELETE CASCADE
-        )
-      ''');
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      passwordHash TEXT NOT NULL,
+      uniqueId TEXT,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+      isBanned INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY(uniqueId) REFERENCES devices(uniqueId) ON DELETE CASCADE
+    )
+  ''');
+
+   //Create logs table for request logging.
+    await db.execute('''
+    CREATE TABLE logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      source TEXT NOT NULL,
+      logLevel TEXT NOT NULL,
+      category TEXT NOT NULL,
+      message TEXT NOT NULL
+    )
+  ''');
   }
 
-  /// Registers a device using its uniqueId and type, then returns a unique API key.
+  /// Registers a device using its [uniqueId] and [type], then returns a unique API key.
   Future<String> registerDevice(String uniqueId, String type) async {
     final db = await database;
     final apiKey = const Uuid().v4();
@@ -105,13 +124,13 @@ class DatabaseFunctions {
     return apiKey;
   }
 
-  /// Deletes a device from the database.
+  /// Deletes a device from the database by its [uniqueId].
   Future<void> unregisterDevice(String uniqueId) async {
     final db = await database;
     await db.delete('devices', where: 'uniqueId = ?', whereArgs: [uniqueId]);
   }
 
-  /// Checks if a device is registered.
+  /// Checks if a device is registered by its [uniqueId].
   Future<bool> isDeviceRegistered(String uniqueId) async {
     final db = await database;
     final result = await db.query(
@@ -122,18 +141,24 @@ class DatabaseFunctions {
     return result.isNotEmpty;
   }
 
-  /// Retrieves a device from the devices table by uniqueId.
+  /// Retrieves a device from the devices table by [uniqueId].
   Future<List<Map<String, dynamic>>> getDevice(String uniqueId) async {
     final db = await database;
     return db.query('devices', where: 'uniqueId = ?', whereArgs: [uniqueId]);
   }
 
+  /// Retrieves all devices stored in the database.
+  Future<List<Map<String, dynamic>>> getDevices() async {
+    final db = await database;
+    return db.query('devices');
+  }
+
   /// Inserts telemetry data into the stored_data table.
   Future<void> insertStoredData(
-    String uniqueId,
-    String key,
-    String value,
-  ) async {
+      String uniqueId,
+      String key,
+      String value,
+      ) async {
     final db = await database;
     try {
       await db.insert('stored_data', {
@@ -142,11 +167,11 @@ class DatabaseFunctions {
         'value': value,
       });
     } catch (e) {
-      print('Error inserting stored data: $e');
+      _logger.e('Error inserting stored data: $e');
     }
   }
 
-  /// Retrieves all stored data associated with a device.
+  /// Retrieves all telemetry data associated with a device identified by [uniqueId].
   Future<List<Map<String, dynamic>>> getStoredData(String uniqueId) async {
     final db = await database;
     return db.query(
@@ -156,10 +181,22 @@ class DatabaseFunctions {
     );
   }
 
-  /// Retrieves all devices stored in the database.
-  Future<List<Map<String, dynamic>>> getDevices() async {
+  /// Retrieves all telemetry data from the stored_data table.
+  Future<List<Map<String, dynamic>>> getAllStoredData() async {
     final db = await database;
-    return db.query('devices');
+    return db.query('stored_data');
+  }
+
+  /// Retrieves all attributes from the settings table.
+  Future<List<Map<String, dynamic>>> getAllAttributes() async {
+    final db = await database;
+    return db.query('settings');
+  }
+
+  /// Retrieves all users from the users table.
+  Future<List<Map<String, dynamic>>> getAllUsers() async {
+    final db = await database;
+    return db.query('users');
   }
 
   /// Creates or updates an attribute (setting) for a device.
@@ -185,10 +222,8 @@ class DatabaseFunctions {
         whereArgs: [uniqueId, attributeType, key]);
   }
 
-  /// Retrieves attributes for a device.
-  /// If [attributeType] is provided, it filters by that type
-  /// client attributes are for the things
-  /// server attributes are for the connected apps
+  /// Retrieves attributes for a device identified by [uniqueId].
+  /// If [attributeType] is provided, it filters by that type.
   Future<List<Map<String, dynamic>>> getAttributes(String uniqueId,
       {String? attributeType}) async {
     final db = await database;
@@ -199,20 +234,20 @@ class DatabaseFunctions {
       return db.query('settings', where: 'uniqueId = ?', whereArgs: [uniqueId]);
     }
   }
-  /// Retrieves all attributes for a device.
-  Future<int> registerUser(String username, String password, {String? uniqueId}) async{
+
+  /// Registers a user by inserting into the users table.
+  Future<int> registerUser(String username, String password, {String? uniqueId}) async {
     final db = await database;
-    //we hash the password using sha512
     final passwordHash = sha512.convert(utf8.encode(password)).toString();
     return db.insert('users', {
       'username': username,
       'passwordHash': passwordHash,
-      'uniqueId': uniqueId, // optionally associate with a device
+      'uniqueId': uniqueId,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
     });
   }
 
-  /// Authenticates a user by checking the provided username and password.
+  /// Authenticates a user by checking the provided [username] and [password].
   Future<Map<String, dynamic>?> authenticateUser(String username, String password) async {
     final db = await database;
     final results = await db.query(
@@ -220,14 +255,11 @@ class DatabaseFunctions {
       where: 'username = ?',
       whereArgs: [username],
     );
-
     if (results.isEmpty) {
       return null;
     }
-
     final user = results.first;
-    final storedHash = user['passwordHash'] as String;
-    //We check if the password hash is the same as the one in the database
+    final storedHash = user['passwordHash']! as String;
     final providedHash = sha512.convert(utf8.encode(password)).toString();
     if (providedHash == storedHash) {
       return user;
@@ -235,8 +267,8 @@ class DatabaseFunctions {
     return null;
   }
 
-  ///function to check if the user already exists
-  Future<bool> userExists(String username) async{
+  /// Checks if a user already exists by [username].
+  Future<bool> userExists(String username) async {
     final db = await database;
     final results = await db.query(
       'users',
@@ -245,7 +277,40 @@ class DatabaseFunctions {
     );
     return results.isNotEmpty;
   }
+  ///Checks if a device is banned thanks to its serial number.
+  Future<void> updateDeviceBanStatus(String uniqueId, bool isBanned) async {
+    final db = await database;
+    await db.update('devices', {'isBanned': isBanned ? 1 : 0},
+        where: 'uniqueId = ?', whereArgs: [uniqueId]);
+  }
 
+  /// Updates the ban status of a user thanks to its username.
+  Future<void> updateUserBanStatus(String username, bool isBanned) async {
+    final db = await database;
+    await db.update('users', {'isBanned': isBanned ? 1 : 0},
+        where: 'username = ?', whereArgs: [username]);
+  }
 
+  ///Fetch logs by category
+  Future<void> logRequest(
+      String source,
+      String logLevel,
+      String category,
+      String message,
+      ) async {
+    final db = await database;
+    await db.insert('logs', {
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'source': source,
+      'logLevel': logLevel,
+      'category': category,
+      'message': message,
+    });
+  }
 
+  /// Nfzetch all logs.
+  Future<List<Map<String, dynamic>>> getLogs() async {
+    final db = await database;
+    return db.query('logs', orderBy: 'timestamp DESC');
+  }
 }

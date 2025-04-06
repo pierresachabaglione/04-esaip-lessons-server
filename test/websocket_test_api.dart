@@ -41,7 +41,7 @@ void main() {
     final response = await queue.next;
     final data = jsonDecode(response as String);
     expect(data['status'], equals('success'));
-    expect(data['message'], contains('Device registered'));
+    expect(data['message'], contains('Sensor connected successfully'));
     expect(data.containsKey('apiKey'), true);
     print(';API Key: ${data['apiKey']}');
     final apiKey = data['apiKey'];

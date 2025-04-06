@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:esaip_lessons_server/database/database_functions.dart';
+import 'package:esaip_lessons_server/managers/global_manager.dart'; // For updating the UI when a request is received
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -13,9 +14,9 @@ class WebSocketServer {
       {}; // Track clients by uniqueId.
 
   /// Starts the WebSocket server.
-  Future<void> start({int port = 8888}) async {
-    _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
-    print('WebSocket server running on ws://localhost:$port');
+  Future<void> start({String ipAddress = '0.0.0.0', int port = 1111}) async {
+    _server = await HttpServer.bind(InternetAddress(ipAddress), port);
+    print('WebSocket server running on ws://$ipAddress:$port');
     _server?.transform(WebSocketTransformer()).listen(_handleConnection);
   }
 
@@ -49,7 +50,14 @@ class WebSocketServer {
           channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid API key'}));
           return;
         }
-        // Additional check for CC-MP devices: if uniqueId contains "CC-MP", require user authentication.
+        // We check if the device is banned
+        if (deviceRecords.first['isBanned'] == 1) {
+          await DatabaseFunctions().logRequest(uniqueId, 'WARN', 'banned device connection attempt', 'banned device connection attempt from ID : $uniqueId');
+          GlobalManager.instance.notifyDatabaseChange();
+          channel.sink.add(jsonEncode({'status': 'error', 'message': 'Device is banned'}));
+          return;
+        }
+        // Additional check for monbile phones
         if (uniqueId.contains('CC-MP')) {
           final username = data['username'] as String?;
           final password = data['password'] as String?;
@@ -66,6 +74,15 @@ class WebSocketServer {
               'status': 'error',
               'message': 'Invalid username or password for CC-MP device'
             }));
+            return;
+          }
+          // NEW: Check if the user is banned.
+          if (user['isBanned'] == 1) {
+            channel.sink.add(jsonEncode({
+              'status': 'error',
+              'message': 'User is banned'
+            }));
+            await DatabaseFunctions().logRequest(uniqueId, 'WARN', 'banned user action attempt', 'banned user action attempt from user : $username device: $uniqueId');
             return;
           }
         }
@@ -120,7 +137,7 @@ class WebSocketServer {
     }
 
     // For mobile devices (or MP phones), require username and password.
-    if (type == 'mobile' || uniqueId.startsWith('CC-MP-')) {
+    if (type == 'mobile' &&  RegExp(r'^CC-(MP)-\d{5}$').hasMatch(uniqueId)) {
       final password = data['password'] as String?;
       final username = data['username'] as String?;
       if (password == null || password.isEmpty || username == null || username.isEmpty) {
@@ -136,9 +153,11 @@ class WebSocketServer {
         );
         return;
       }
-      // Optionally, check if the username is already taken here.
+
       await DatabaseFunctions().registerUser(username, password, uniqueId: uniqueId);
+      await DatabaseFunctions().logRequest(uniqueId, 'INFO', 'register', 'Mobile device Device ID : $uniqueId registered successfully');
       final apiKey = await DatabaseFunctions().registerDevice(uniqueId, type);
+      GlobalManager.instance.notifyDatabaseChange();
       _clients[uniqueId] = channel;
       channel.sink.add(
         jsonEncode({
@@ -155,17 +174,18 @@ class WebSocketServer {
         channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid uniqueId format'}));
         return;
       }
-      final existingDevice = await DatabaseFunctions().getDevice(uniqueId);
-      if (existingDevice.isNotEmpty) {
-        channel.sink.add(jsonEncode({'status': 'error', 'message': 'Device already registered'}));
-        return;
-      }
       final apiKey = await DatabaseFunctions().registerDevice(uniqueId, type);
+      await DatabaseFunctions().logRequest(uniqueId, 'INFO', 'register', 'Device S/N : $uniqueId registered successfully');
+      GlobalManager.instance.notifyDatabaseChange();
       _clients[uniqueId] = channel;
+      // Update the message for sensor devices:
+      String confirmationMessage = (type == 'sensor' || uniqueId.startsWith('CC-TS-'))
+          ? 'Sensor connected successfully'
+          : 'Device registered';
       channel.sink.add(
         jsonEncode({
           'status': 'success',
-          'message': 'Device registered',
+          'message': confirmationMessage,
           'apiKey': apiKey,
         }),
       );
@@ -192,6 +212,8 @@ class WebSocketServer {
       return;
     }
     await DatabaseFunctions().unregisterDevice(uniqueId);
+    await DatabaseFunctions().logRequest(uniqueId, 'INFO', 'unregister', 'Device unregistered successfully');
+    GlobalManager.instance.notifyDatabaseChange();
     _clients.remove(uniqueId);
     channel.sink.add(
       jsonEncode({'status': 'success', 'message': 'Device unregistered'}),
@@ -199,23 +221,15 @@ class WebSocketServer {
   }
 
   /// Data store handler.
-  Future<void> _handleData(
-    WebSocketChannel channel,
-    Map<String, dynamic> data,
-  ) async {
+  Future<void> _handleData(WebSocketChannel channel, Map<String, dynamic> data) async {
     final uniqueId = data['uniqueId'] as String?;
     if (uniqueId == null) {
-      channel.sink.add(
-        jsonEncode({'status': 'error', 'message': 'Missing uniqueId'}),
-      );
+      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing uniqueId'}));
       return;
     }
-
     if (data.containsKey('data')) {
       final payload = data['data'];
       if (payload is Map) {
-        // we use a batch to insert multiple entries at once in the database
-        print("recognised as map");
         final db = await DatabaseFunctions().database;
         final batch = db.batch();
         for (final entry in payload.entries) {
@@ -226,38 +240,35 @@ class WebSocketServer {
           });
         }
         await batch.commit(noResult: true);
-        channel.sink.add(
-          jsonEncode({'status': 'success', 'message': 'Data stored'}),
-        );
+        channel.sink.add(jsonEncode({'status': 'success', 'message': 'Data stored'}));
+        // Log the telemetry data storage.
+        await DatabaseFunctions().logRequest(uniqueId, 'INFO', 'telemetry request', 'Multiple telemetry data entries stored');
+        GlobalManager.instance.notifyDatabaseChange();
         return;
       } else if (payload is String) {
-        print("recongised as string");
-        // If the payload is only a string we store it using a default key.
         await DatabaseFunctions().insertStoredData(uniqueId, 'data', payload);
-        channel.sink.add(
-          jsonEncode({'status': 'success', 'message': 'Data stored'}),
-        );
+        channel.sink.add(jsonEncode({'status': 'success', 'message': 'Data stored'}));
+        await DatabaseFunctions().logRequest(uniqueId, 'INFO', 'telemetry request', 'Telemetry data stored');
+        GlobalManager.instance.notifyDatabaseChange();
         return;
       }
     } else if (data.containsKey('key')) {
       final key = data['key'] as String?;
       final value = data['value'] as String?;
       if (key == null || value == null) {
-        channel.sink.add(
-          jsonEncode({'status': 'error', 'message': 'Missing key or value'}),
-        );
+        channel.sink.add(jsonEncode({'status': 'error', 'message': 'Missing key or value'}));
         return;
       }
       await DatabaseFunctions().insertStoredData(uniqueId, key, value);
-      channel.sink.add(
-        jsonEncode({'status': 'success', 'message': 'Data stored'}),
-      );
+      channel.sink.add(jsonEncode({'status': 'success', 'message': 'Data stored'}));
+      await DatabaseFunctions().logRequest(uniqueId, 'INFO', 'telemetry request', 'Telemetry data stored');
+      GlobalManager.instance.notifyDatabaseChange();
+      return;
     } else {
-      channel.sink.add(
-        jsonEncode({'status': 'error', 'message': 'Invalid data format'}),
-      );
+      channel.sink.add(jsonEncode({'status': 'error', 'message': 'Invalid data format'}));
     }
   }
+
 
   /// Retrieves stored data for a given device by its serial number.
   Future<void> _handleGetStoredData(WebSocketChannel channel, Map<String, dynamic> data) async {
@@ -284,7 +295,7 @@ class WebSocketServer {
 
     // --- Authorization Check ---
     // If the requester is not asking for its own data, then
-    // allow only if requester is a mobile device and target is a sensor
+    //we allow only if requester is a mobile device and target is a sensor
     if (requesterUniqueId != targetUniqueId) {
       if (!(requesterUniqueId.startsWith('CC-MP-') && targetUniqueId.startsWith('CC-TS-'))) {
         channel.sink.add(jsonEncode({
@@ -322,6 +333,9 @@ class WebSocketServer {
       'message': 'Stored sensor data retrieved successfully',
       'data': reconstructedData,
     }));
+
+    GlobalManager.instance.notifyDatabaseChange();
+    await DatabaseFunctions().logRequest(requesterUniqueId, 'INFO', 'telemetry request', 'Telemetry data sent to device : $requesterUniqueId');
   }
 
 
@@ -401,6 +415,8 @@ class WebSocketServer {
       return;
     }
     await DatabaseFunctions().setAttribute(uniqueId, attributeType, key, value);
+    await DatabaseFunctions().logRequest(uniqueId, 'INFO', 'attribute request', 'Attribute $attributeType $key with value :  $value set');
+    GlobalManager.instance.notifyDatabaseChange();
     channel.sink.add(jsonEncode({
       'status': 'success',
       'message': 'Attribute set',
@@ -431,6 +447,8 @@ class WebSocketServer {
       return;
     }
     await DatabaseFunctions().deleteAttribute(uniqueId, attributeType, key);
+    await DatabaseFunctions().logRequest(uniqueId, 'INFO', 'attribute request', 'Attribute $attributeType $key deleted');
+    GlobalManager.instance.notifyDatabaseChange();
     channel.sink.add(
       jsonEncode({'status': 'success', 'message': 'Attribute deleted'}),
     );
@@ -451,6 +469,8 @@ class WebSocketServer {
     }
     final attributes =
     await DatabaseFunctions().getAttributes(uniqueId, attributeType: filterType);
+    await DatabaseFunctions().logRequest(uniqueId, 'INFO', 'attribute request', 'Attribute $filterType $attributes requested');
+    GlobalManager.instance.notifyDatabaseChange();
     channel.sink.add(jsonEncode({
       'status': 'success',
       'message': 'Attributes retrieved',
