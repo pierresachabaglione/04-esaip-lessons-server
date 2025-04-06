@@ -32,7 +32,8 @@ De prime abord j’ai souhaité implémenter la base de données en utilisant **
 > ```dart
 > Future<Database> _initDatabase() async {
 >   final path = join(await getDatabasesPath(), 'app_database.db');
->   await deleteDatabase(path); // pour les tests
+>   await deleteDatabase(path); 
+>  pour les tests
 >   return openDatabase(path, version: 1, onCreate: _onCreate);
 > }
 >
@@ -165,3 +166,173 @@ L’interface graphique a été facilitée par l’utilisation des Streams pour 
 ## Journalisation (Logs)
 
 Une table de logs fut créée afin de tracer les modifications effectuées par le serveur WebSocket.
+
+## Trames Application Client – Capteur
+
+
+
+Voici un exemple de trames server / capteur qui transitent via WebSocket. Ces tramens permettent l’enregistrement, l’envoi périodique de données de télémétrie mais aussi la gestion du mode de fonctionnement (actif ou veille).
+
+
+
+### Enregistrement du capteur
+
+
+
+**Requête envoyée par le capteur :**
+
+```json
+
+ {
+
+   "action": "register",
+
+   "uniqueId": "CC-TS-00001",
+
+   "type": "sensor"
+
+ }
+
+ ```
+
+
+
+*Pour un capteur nécessitant authentification :*
+
+```json
+
+ {
+
+   "action": "register",
+
+   "uniqueId": "CC-TS-00001",
+
+   "type": "sensor",
+
+   "username": "user_example",
+
+   "password": "password_example"
+
+ }
+
+ ```
+
+
+
+**Réponse du serveur :**
+
+```json
+
+ {
+
+   "status": "success",
+
+   "message": "Sensor connected successfully",
+
+   "apiKey": "<generated_api_key>"
+
+ }
+
+ ```
+
+
+
+### Transmission de données de télémétrie
+
+
+
+**Envoi de la température :**
+
+```json
+
+ {
+
+   "action": "sendData",
+
+   "uniqueId": "CC-TS-00001",
+
+   "key": "temperature",
+
+   "value": "25.0",
+
+   "type": "sensor",
+
+   "apiKey": "<generated_api_key>"
+
+ }
+
+ ```
+
+
+
+**Envoi de l’humidité :**
+
+```json
+
+ {
+
+   "action": "sendData",
+
+   "uniqueId": "CC-TS-00001",
+
+   "key": "humidity",
+
+   "value": "50",
+
+   "type": "sensor",
+
+   "apiKey": "<generated_api_key>"
+
+ }
+
+ ```
+
+
+
+### Réglage et mise à jour du mode de fonctionnement
+
+
+
+Le capteur envoie, dès son enregistrement, un attribut indiquant son mode initial (actif ou veille) :
+
+
+
+```json
+
+ {
+
+   "action": "setAttribute",
+
+   "uniqueId": "CC-TS-00001",
+
+   "key": "mode",
+
+   "value": "active",
+
+   "apiKey": "<generated_api_key>"
+
+ }
+
+ ```
+
+### Changement dynamique du mode de fonctionnement
+
+Grace à une implémentation de messages bidirectionnels, on peut envoyer par l'intérmédiaire du serveur un message à une application de capteur spécifique une demande de changement à la volée du mode de fonctionnement  :
+
+
+
+```json
+
+ {
+
+   "action": "changeMode",
+
+   "mode": "sleep"
+
+ }
+
+ ```
+
+
+
+A la réception de la commande, l’application capteur met à jour son état interne afin de s'adapteur au nouvel intervalle de transmission des données en redémarrant ses envois cycliques de télémétrie en fonction du nouveau mode.
